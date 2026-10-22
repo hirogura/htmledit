@@ -1337,7 +1337,6 @@
       editor.notifyChange();
     });
     section.appendChild(propRow("画像 URL", urlInput));
-    section.appendChild(buildImageGallery(image, { url: urlInput, alt: altInput, resolved: resolved }));
     section.appendChild(propRow("代替テキスト (alt)", altInput));
     section.appendChild(
       propRow("幅 (px)", propInput(image.getAttribute("width") || "", function (value) {
@@ -1414,6 +1413,8 @@
       })
     );
     section.appendChild(actions);
+    // サムネイルはカード的最下部 (操作ボタンの下) に置く
+    section.appendChild(buildImageGallery(image, { url: urlInput, alt: altInput, resolved: resolved }));
     return section;
   }
 
@@ -1440,6 +1441,7 @@
   /* ------------------------------------------------------------------ */
   var ASSET_PREFIX = "public/images";
   var PLACEHOLDER_ALT = "画像";
+  var GALLERY_PAGE_SIZE = 20;
   var assetCache = { key: "", promise: null };
 
   function assetCacheKey() {
@@ -1511,32 +1513,62 @@
     status.textContent = "読み込み中…";
     wrap.appendChild(status);
 
-    var paint = function (images) {
+    var more = document.createElement("button");
+    more.type = "button";
+    more.className = "btn btn-sm btn-block image-gallery-more";
+    more.hidden = true;
+    wrap.appendChild(more);
+
+    var images = [];
+    var visible = GALLERY_PAGE_SIZE;
+
+    var paint = function () {
       grid.innerHTML = "";
       if (!images.length) {
         status.hidden = false;
         status.textContent = "保存済みの画像はありません (" + ASSET_PREFIX + " を確認してください)";
+        more.hidden = true;
         return;
       }
       status.hidden = true;
-      images.forEach(function (asset) {
+      title.textContent = "保存済みの画像 (" + ASSET_PREFIX + ") " + images.length + "件";
+      images.slice(0, visible).forEach(function (asset) {
         grid.appendChild(buildThumbnail(asset, image, controls));
       });
+      var rest = images.length - visible;
+      more.hidden = rest <= 0;
+      more.textContent = "続きを読み込む (残り " + rest + " 件)";
     };
 
     var failed = function (error) {
       grid.innerHTML = "";
       status.hidden = false;
+      more.hidden = true;
       status.textContent = "画像の読み込みに失敗しました: " + error.message;
     };
 
-    refresh.addEventListener("click", function () {
+    var reload = function (force) {
       status.hidden = false;
       status.textContent = "読み込み中…";
-      loadAssetImages(true).then(paint).catch(failed);
+      loadAssetImages(force)
+        .then(function (result) {
+          images = result;
+          visible = GALLERY_PAGE_SIZE;
+          paint();
+        })
+        .catch(failed);
+    };
+
+    more.addEventListener("click", function () {
+      visible += GALLERY_PAGE_SIZE;
+      paint();
     });
 
-    loadAssetImages(false).then(paint).catch(failed);
+    refresh.addEventListener("click", function () {
+      reload(true);
+    });
+
+    reload(false);
 
     return wrap;
   }

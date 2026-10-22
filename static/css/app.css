@@ -915,6 +915,10 @@ textarea.input {
   line-height: 1.6;
 }
 
+.image-gallery-more {
+  margin-top: 8px;
+}
+
 .thumb {
   appearance: none;
   border: 1px solid var(--border);
