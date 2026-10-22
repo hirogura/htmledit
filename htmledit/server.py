@@ -13,7 +13,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, urlsplit
 
-from . import VERSION, api, memo, sites, terminal, websocket
+from . import VERSION, api, sites, terminal, websocket
 from .config import APP_ROOT, CONFIG, STATIC_DIR
 from .sites import REGISTRY, SiteError
 
@@ -145,17 +145,13 @@ class HtmleditHandler(BaseHTTPRequestHandler):
         session_id = (params.get("id") or ["default"])[0]
         site_id = (params.get("site") or [""])[0]
         command = (params.get("cmd") or [""])[0].strip()
-        cwd_values = params.get("cwd")
+        cwd_param = (params.get("cwd") or [""])[0].strip()
         cwd = str(APP_ROOT)
-        if cwd_values is not None:
-            # メモディレクトリ内だけを許可する (空文字はメモのルート)
+        if site_id:
+            # cwd はサイトルートからの相対パス
             try:
-                cwd = str(memo.resolve(cwd_values[0].strip(), allow_root=True))
-            except memo.MemoError:
-                cwd = str(APP_ROOT)
-        elif site_id:
-            try:
-                cwd = REGISTRY.get(site_id).path
+                site = REGISTRY.get(site_id)
+                cwd = str(sites.resolve_path(site, cwd_param)) if cwd_param else site.path
             except SiteError:
                 cwd = str(APP_ROOT)
 

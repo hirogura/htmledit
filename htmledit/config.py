@@ -12,6 +12,7 @@ APP_ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = APP_ROOT / "static"
 DEFAULT_REPO_URL = "https://github.com/hirogura/htmledit.git"
 DEFAULT_MEMO_DIR = "/opt/lxd-data/htmledit-memo"
+DEFAULT_DATA_DIR = "/opt/lxd-data/htmledit-data"
 
 _FALSE_VALUES = {"0", "false", "no", "off", ""}
 
@@ -49,7 +50,7 @@ class Config:
     def reload(self) -> "Config":
         self.host = _env("HTMLEDIT_HOST", "127.0.0.1")
         self.port = _env_int("HTMLEDIT_PORT", 3372)
-        self.data_dir = Path(_env("HTMLEDIT_DATA_DIR", str(APP_ROOT / "data"))).expanduser()
+        self.data_dir = Path(_env("HTMLEDIT_DATA_DIR", DEFAULT_DATA_DIR)).expanduser()
         self.sites_file = self.data_dir / "sites.json"
         self.repos_dir = self.data_dir / "repos"
         self.repo_url = _env("HTMLEDIT_REPO_URL", DEFAULT_REPO_URL)

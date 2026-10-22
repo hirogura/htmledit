@@ -195,6 +195,11 @@ body {
   margin-left: auto;
 }
 
+/* ボタンがグループ内の場合は詰めて並べる */
+.pane-head-actions .btn {
+  margin-left: 0;
+}
+
 /* ------------------------------------------------------------------ */
 /* ボタン / 入力                                                        */
 /* ------------------------------------------------------------------ */
@@ -944,24 +949,6 @@ textarea.input {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 45%;
-}
-
-/* メモのファイルツリー (selfcode のサイドバーと同じ構成) */
-.memo-tree {
-  flex: 0 1 auto;
-  max-height: 45%;
-  min-height: 72px;
-  overflow: auto;
-  padding: 6px 4px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.memo-tree .tree-row.is-root {
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 4px;
-  padding-bottom: 4px;
-  border-radius: 0;
 }
 
 .memo-text {

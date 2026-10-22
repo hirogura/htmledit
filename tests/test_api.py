@@ -124,8 +124,8 @@ class ApiTestCase(unittest.TestCase):
     def test_version(self):
         status, payload = self.request("GET", "/api/version")
         self.assertEqual(status, 200)
-        self.assertEqual(payload["version"], "0.8.0")
-        self.assertEqual(payload["label"], "v.0.8.0")
+        self.assertEqual(payload["version"], "0.9.0")
+        self.assertEqual(payload["label"], "v.0.9.0")
 
     def test_site_lifecycle(self):
         status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
@@ -358,94 +358,89 @@ class ApiTestCase(unittest.TestCase):
         status, payload = self.request("GET", "/api/memo")
         self.assertEqual(payload["content"], "# メモ\nテスト\n")
 
-    def test_memo_tree(self):
-        status, payload = self.request("GET", "/api/memo/tree")
-        self.assertEqual(status, 200, payload)
-        self.assertEqual(payload["root"], str(CONFIG.memo_dir))
-        self.assertEqual(payload["memoFile"], "memo.md")
-        paths = [entry["path"] for entry in payload["tree"]]
-        self.assertIn("memo.md", paths)
+    def test_site_file_operations(self):
+        status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
+        site_id = payload["site"]["id"]
+        base = Path(CONFIG.data_dir) / "repos" / site_id
 
-        # フォルダ作成 → ファイル作成 → ツリーへ反映される
-        status, payload = self.request("POST", "/api/memo/folder", {"path": "notes"})
+        # フォルダ作成 → ファイル作成
+        status, payload = self.request("POST", f"/api/sites/{site_id}/folder", {"path": "notes"})
         self.assertEqual(status, 200, payload)
         status, payload = self.request(
-            "POST", "/api/memo/file", {"path": "notes/today.md", "content": "# today\n"}
+            "POST", f"/api/sites/{site_id}/file", {"path": "notes/today.md", "content": "# today\n"}
         )
         self.assertEqual(status, 200, payload)
+        self.assertTrue((base / "notes" / "today.md").exists())
 
-        status, payload = self.request("GET", "/api/memo/tree")
+        status, payload = self.request("GET", f"/api/sites/{site_id}/tree")
         paths = [entry["path"] for entry in payload["tree"]]
         self.assertIn("notes", paths)
         self.assertIn("notes/today.md", paths)
 
-        # ファイル読み書き
-        status, payload = self.request("GET", "/api/memo/file?path=notes/today.md")
-        self.assertEqual(status, 200, payload)
-        self.assertEqual(payload["content"], "# today\n")
-
-        status, payload = self.request(
-            "PUT", "/api/memo/file", {"path": "notes/today.md", "content": "# 今日\n"}
-        )
-        self.assertEqual(status, 200, payload)
-        status, payload = self.request("GET", "/api/memo/file?path=notes/today.md")
-        self.assertEqual(payload["content"], "# 今日\n")
-
         # リネーム
         status, payload = self.request(
-            "POST", "/api/memo/rename", {"from": "notes/today.md", "to": "notes/daily.md"}
+            "POST", f"/api/sites/{site_id}/rename", {"from": "notes/today.md", "to": "notes/daily.md"}
         )
         self.assertEqual(status, 200, payload)
-        self.assertEqual(payload["path"], "notes/daily.md")
-        self.assertTrue((CONFIG.memo_dir / "notes" / "daily.md").exists())
+        self.assertTrue((base / "notes" / "daily.md").exists())
 
-        # 削除
-        status, payload = self.request("DELETE", "/api/memo/file", {"path": "notes/daily.md"})
-        self.assertEqual(status, 200, payload)
-        self.assertFalse((CONFIG.memo_dir / "notes" / "daily.md").exists())
-
-    def test_memo_path_traversal_is_blocked(self):
-        status, payload = self.request("GET", "/api/memo/file?path=../../../../etc/passwd")
-        self.assertEqual(status, 404, payload)
-
-        status, payload = self.request(
-            "PUT", "/api/memo/file", {"path": "../escape.md", "content": "x"}
-        )
-        self.assertEqual(status, 400, payload)
-
-        status, payload = self.request(
-            "POST", "/api/memo/rename", {"from": "memo.md", "to": "../escape.md"}
-        )
-        self.assertEqual(status, 400, payload)
-
-    def test_memo_upload_and_download(self):
+        # アップロード
         status, payload = self.request_upload(
-            "/api/memo/upload?dir=notes&name=sample.txt",
-            b"hello memo",
+            f"/api/sites/{site_id}/upload?dir=notes&name=sample.txt",
+            b"hello site",
             "application/octet-stream",
         )
         self.assertEqual(status, 200, payload)
         self.assertEqual(payload["path"], "notes/sample.txt")
-        self.assertEqual(payload["size"], len(b"hello memo"))
-        saved = CONFIG.memo_dir / "notes" / "sample.txt"
-        self.assertTrue(saved.exists())
-        self.assertEqual(saved.read_bytes(), b"hello memo")
+        self.assertEqual((base / "notes" / "sample.txt").read_bytes(), b"hello site")
 
+        # ダウンロード
         status, body, content_type = self.request_raw(
-            "/api/memo/download?path=notes/sample.txt"
+            f"/api/sites/{site_id}/download?path=notes/sample.txt"
         )
         self.assertEqual(status, 200)
-        self.assertEqual(body, "hello memo")
+        self.assertEqual(body, "hello site")
 
-        # フォルダは ZIP でダウンロードできる
-        status, body, content_type = self.request_raw("/api/memo/download?path=notes")
+        status, body, content_type = self.request_raw(f"/api/sites/{site_id}/download?path=notes")
         self.assertEqual(status, 200)
         self.assertIn("zip", content_type)
         self.assertTrue(body.startswith("PK"))
 
-        # ルート外は拒否される
-        status, _, _ = self.request_raw("/api/memo/download?path=../../etc/passwd")
+        # 削除
+        status, payload = self.request("DELETE", f"/api/sites/{site_id}/file", {"path": "notes"})
+        self.assertEqual(status, 200, payload)
+        self.assertFalse((base / "notes").exists())
+
+        self.request("DELETE", f"/api/sites/{site_id}", {})
+
+    def test_site_file_operations_block_traversal(self):
+        status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
+        site_id = payload["site"]["id"]
+
+        status, payload = self.request(
+            "POST", f"/api/sites/{site_id}/file", {"path": "../escape.txt"}
+        )
+        self.assertEqual(status, 400, payload)
+
+        status, payload = self.request(
+            "POST", f"/api/sites/{site_id}/folder", {"path": "../escape"}
+        )
+        self.assertEqual(status, 400, payload)
+
+        status, payload = self.request(
+            "POST", f"/api/sites/{site_id}/rename", {"from": "index.html", "to": "../escape.html"}
+        )
+        self.assertEqual(status, 400, payload)
+
+        status, payload = self.request(
+            "DELETE", f"/api/sites/{site_id}/file", {"path": "../"}
+        )
+        self.assertEqual(status, 400, payload)
+
+        status, _, _ = self.request_raw(f"/api/sites/{site_id}/download?path=../../etc/passwd")
         self.assertEqual(status, 404)
+
+        self.request("DELETE", f"/api/sites/{site_id}", {})
 
     def test_opencode_status(self):
         status, payload = self.request("GET", "/api/opencode/status")

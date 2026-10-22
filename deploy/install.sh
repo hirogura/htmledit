@@ -13,6 +13,7 @@ INSTALL_DIR="${HTMLEDIT_INSTALL_DIR:-/opt/htmledit}"
 PORT="${HTMLEDIT_PORT:-3372}"
 RUN_USER="${HTMLEDIT_RUN_USER:-root}"
 MEMO_DIR="${HTMLEDIT_MEMO_DIR:-/opt/lxd-data/htmledit-memo}"
+DATA_DIR="${HTMLEDIT_DATA_DIR:-/opt/lxd-data/htmledit-data}"
 ENV_DIR="/etc/htmledit"
 ENV_FILE="${ENV_DIR}/htmledit.env"
 UNIT_FILE="/etc/systemd/system/htmledit.service"
@@ -30,22 +31,22 @@ sed \
   -e "s|^WorkingDirectory=.*|WorkingDirectory=${INSTALL_DIR}|" \
   -e "s|^Environment=PYTHONPATH=.*|Environment=PYTHONPATH=${INSTALL_DIR}|" \
   -e "s|^ExecStart=.*|ExecStart=$(command -v python3) -m htmledit|" \
-  -e "s|ReadWritePaths=.*|ReadWritePaths=${INSTALL_DIR}/data ${INSTALL_DIR}/.git ${INSTALL_DIR}/static ${MEMO_DIR}|" \
+  -e "s|ReadWritePaths=.*|ReadWritePaths=${DATA_DIR} ${MEMO_DIR} ${INSTALL_DIR}/.git ${INSTALL_DIR}/static|" \
   "${INSTALL_DIR}/deploy/htmledit.service" > "${UNIT_FILE}"
 
 if [ ! -f "${ENV_FILE}" ]; then
   echo "==> 環境設定ファイル(${ENV_FILE})を作成"
   sed -e "s|^HTMLEDIT_PORT=.*|HTMLEDIT_PORT=${PORT}|" \
-      -e "s|^HTMLEDIT_DATA_DIR=.*|HTMLEDIT_DATA_DIR=${INSTALL_DIR}/data|" \
+      -e "s|^HTMLEDIT_DATA_DIR=.*|HTMLEDIT_DATA_DIR=${DATA_DIR}|" \
       -e "s|^HTMLEDIT_MEMO_DIR=.*|HTMLEDIT_MEMO_DIR=${MEMO_DIR}|" \
       "${INSTALL_DIR}/deploy/htmledit.env.example" > "${ENV_FILE}"
   chmod 600 "${ENV_FILE}"
   echo "    GITHUB_TOKEN / HTMLEDIT_AUTH_* 必要に応じて編集してください"
 fi
 
-mkdir -p "${INSTALL_DIR}/data"
+mkdir -p "${DATA_DIR}"
 mkdir -p "${MEMO_DIR}"
-chown -R "${RUN_USER}:${RUN_USER}" "${INSTALL_DIR}/data"
+chown -R "${RUN_USER}:${RUN_USER}" "${DATA_DIR}"
 chown -R "${RUN_USER}:${RUN_USER}" "${MEMO_DIR}"
 
 echo "==> systemd を再読み込みして起動"

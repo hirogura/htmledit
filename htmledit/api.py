@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 from pathlib import Path
 
-from . import github, gitcmd, memo, selfservice, sites, terminal
+from . import github, gitcmd, selfservice, sites, terminal
 from .config import APP_ROOT, CONFIG
 from .credentials import STORE as CREDENTIALS
 from .sites import REGISTRY, SiteError
@@ -256,6 +256,117 @@ def save_site_file(request: Request, params: dict) -> dict:
     return {"ok": True, **result}
 
 
+@route("POST", r"/api/sites/(?P<site_id>[^/]+)/file")
+def create_site_file(request: Request, params: dict) -> dict:
+    """ファイルを作成する (エクスプローラの右クリックメニュー)."""
+    site = _site(params["site_id"])
+    payload = request.json() if request.body else {}
+    path = str(payload.get("path", "")).strip()
+    content = payload.get("content", "")
+    if not path:
+        raise ApiError(400, "path が指定されていません。")
+    if not isinstance(content, str):
+        raise ApiError(400, "content は文字列で指定してください。")
+    try:
+        result = sites.create_file(site, path, content)
+    except SiteError as exc:
+        raise ApiError(400, str(exc)) from exc
+    return {"ok": True, **result}
+
+
+@route("DELETE", r"/api/sites/(?P<site_id>[^/]+)/file")
+def delete_site_file(request: Request, params: dict) -> dict:
+    """ファイル / フォルダを削除する."""
+    site = _site(params["site_id"])
+    payload = request.json() if request.body else {}
+    path = str(payload.get("path", "")).strip()
+    if not path:
+        raise ApiError(400, "path が指定されていません。")
+    try:
+        result = sites.remove(site, path)
+    except SiteError as exc:
+        raise ApiError(400, str(exc)) from exc
+    return {"ok": True, **result}
+
+
+@route("POST", r"/api/sites/(?P<site_id>[^/]+)/folder")
+def create_site_folder(request: Request, params: dict) -> dict:
+    """フォルダを作成する (エクスプローラの右クリックメニュー)."""
+    site = _site(params["site_id"])
+    payload = request.json() if request.body else {}
+    path = str(payload.get("path", "")).strip()
+    if not path:
+        raise ApiError(400, "path が指定されていません。")
+    try:
+        result = sites.create_folder(site, path)
+    except SiteError as exc:
+        raise ApiError(400, str(exc)) from exc
+    return {"ok": True, **result}
+
+
+@route("POST", r"/api/sites/(?P<site_id>[^/]+)/rename")
+def rename_site_path(request: Request, params: dict) -> dict:
+    """ファイル / フォルダの名前を変更する."""
+    site = _site(params["site_id"])
+    payload = request.json()
+    source = str(payload.get("from", "")).strip()
+    destination = str(payload.get("to", "")).strip()
+    if not source or not destination:
+        raise ApiError(400, "from と to を指定してください。")
+    try:
+        result = sites.rename(site, source, destination)
+    except SiteError as exc:
+        raise ApiError(400, str(exc)) from exc
+    return {"ok": True, **result}
+
+
+@route("POST", r"/api/sites/(?P<site_id>[^/]+)/upload")
+def upload_site_file(request: Request, params: dict) -> dict:
+    """ローカルからアップロードされたファイルをサイトへ保存する."""
+    site = _site(params["site_id"])
+    directory = request.q("dir", "")
+    name = request.q("name", "")
+    if not name:
+        raise ApiError(400, "name が指定されていません。")
+    if len(request.body) > CONFIG.max_file_size:
+        raise ApiError(413, "ファイルが大きすぎます。")
+    try:
+        result = sites.upload_file(site, directory, name, request.body)
+    except SiteError as exc:
+        raise ApiError(400, str(exc)) from exc
+    result["ignored"] = gitcmd.is_ignored(site.path, result["path"])
+    return {"ok": True, **result}
+
+
+@route("GET", r"/api/sites/(?P<site_id>[^/]+)/download")
+def download_site_file(request: Request, params: dict) -> RawResponse:
+    """サイトのファイル / フォルダをダウンロードする."""
+    site = _site(params["site_id"])
+    path = request.q("path")
+    if not path:
+        raise ApiError(400, "path が指定されていません。")
+    try:
+        target = sites.resolve_path(site, path)
+    except SiteError as exc:
+        raise ApiError(404, str(exc)) from exc
+    if target.is_dir():
+        try:
+            body, filename = sites.archive_folder(site, path)
+        except SiteError as exc:
+            raise ApiError(404, str(exc)) from exc
+        return RawResponse(body=body, content_type="application/zip", filename=filename)
+    if not target.is_file():
+        raise ApiError(404, "ファイルが見つかりません。")
+    if target.stat().st_size > CONFIG.max_file_size:
+        raise ApiError(413, "ファイルが大きすぎます。")
+    content_type, _ = mimetypes.guess_type(str(target))
+    return RawResponse(
+        body=target.read_bytes(),
+        content_type=content_type or "application/octet-stream",
+        filename=target.name,
+    )
+
+
 @route("POST", r"/api/sites/(?P<site_id>[^/]+)/assets")
 def copy_asset(request: Request, params: dict) -> dict:
     """サイドバーからドロップした画像などを日付付きフォルダへ取り込む."""
@@ -447,148 +558,3 @@ def save_memo(request: Request, _params: dict) -> dict:
     except OSError as exc:
         raise ApiError(500, f"メモを保存できません: {exc}") from exc
     return {"ok": True, "path": str(path), "size": path.stat().st_size}
-
-
-# --------------------------------------------------------------------------
-# メモ (ファイルエクスプローラー)
-# --------------------------------------------------------------------------
-
-def _memo_error(exc: memo.MemoError, status: int = 400) -> ApiError:
-    return ApiError(status, str(exc))
-
-
-@route("GET", r"/api/memo/tree")
-def memo_tree(_request: Request, _params: dict) -> dict:
-    try:
-        default = memo.ensure_default_file()
-        return {"root": str(memo.root()), "memoFile": default, "tree": memo.build_tree()}
-    except memo.MemoError as exc:
-        raise _memo_error(exc, 500) from exc
-
-
-@route("GET", r"/api/memo/file")
-def memo_file(request: Request, _params: dict) -> dict:
-    path = request.q("path")
-    if not path:
-        raise ApiError(400, "path が指定されていません。")
-    try:
-        return memo.read_file(path)
-    except memo.MemoError as exc:
-        raise _memo_error(exc, 404) from exc
-
-
-@route("PUT", r"/api/memo/file")
-def save_memo_file(request: Request, _params: dict) -> dict:
-    payload = request.json()
-    path = str(payload.get("path", "")).strip()
-    content = payload.get("content")
-    if not path:
-        raise ApiError(400, "path が指定されていません。")
-    if not isinstance(content, str):
-        raise ApiError(400, "content は文字列で指定してください。")
-    try:
-        result = memo.write_file(path, content)
-    except memo.MemoError as exc:
-        raise _memo_error(exc) from exc
-    return {"ok": True, **result}
-
-
-@route("POST", r"/api/memo/file")
-def create_memo_file(request: Request, _params: dict) -> dict:
-    payload = request.json() if request.body else {}
-    path = str(payload.get("path", "")).strip()
-    content = payload.get("content", "")
-    if not path:
-        raise ApiError(400, "path が指定されていません。")
-    if not isinstance(content, str):
-        raise ApiError(400, "content は文字列で指定してください。")
-    try:
-        result = memo.create_file(path, content)
-    except memo.MemoError as exc:
-        raise _memo_error(exc) from exc
-    return {"ok": True, **result}
-
-
-@route("DELETE", r"/api/memo/file")
-def delete_memo_file(request: Request, _params: dict) -> dict:
-    payload = request.json() if request.body else {}
-    path = str(payload.get("path", "")).strip()
-    if not path:
-        raise ApiError(400, "path が指定されていません。")
-    try:
-        result = memo.remove(path)
-    except memo.MemoError as exc:
-        raise _memo_error(exc) from exc
-    return {"ok": True, **result}
-
-
-@route("POST", r"/api/memo/folder")
-def create_memo_folder(request: Request, _params: dict) -> dict:
-    payload = request.json() if request.body else {}
-    path = str(payload.get("path", "")).strip()
-    if not path:
-        raise ApiError(400, "path が指定されていません。")
-    try:
-        result = memo.create_folder(path)
-    except memo.MemoError as exc:
-        raise _memo_error(exc) from exc
-    return {"ok": True, **result}
-
-
-@route("POST", r"/api/memo/rename")
-def rename_memo(request: Request, _params: dict) -> dict:
-    payload = request.json()
-    source = str(payload.get("from", "")).strip()
-    destination = str(payload.get("to", "")).strip()
-    if not source or not destination:
-        raise ApiError(400, "from と to を指定してください。")
-    try:
-        result = memo.rename(source, destination)
-    except memo.MemoError as exc:
-        raise _memo_error(exc) from exc
-    return {"ok": True, **result}
-
-
-@route("POST", r"/api/memo/upload")
-def upload_memo(request: Request, _params: dict) -> dict:
-    """ローカルからアップロードされたファイルをメモディレクトリへ保存する."""
-    directory = request.q("dir", "")
-    name = request.q("name", "")
-    if not name:
-        raise ApiError(400, "name が指定されていません。")
-    if len(request.body) > CONFIG.max_file_size:
-        raise ApiError(413, "ファイルが大きすぎます。")
-    try:
-        result = memo.save_upload(directory, name, request.body)
-    except memo.MemoError as exc:
-        raise _memo_error(exc) from exc
-    return {"ok": True, **result}
-
-
-@route("GET", r"/api/memo/download")
-def download_memo(request: Request, _params: dict) -> RawResponse:
-    """メモのファイル / フォルダをダウンロードする."""
-    path = request.q("path")
-    if not path:
-        raise ApiError(400, "path が指定されていません。")
-    try:
-        target = memo.resolve(path)
-    except memo.MemoError as exc:
-        raise _memo_error(exc, 404) from exc
-    if target.is_dir():
-        try:
-            body, filename = memo.archive_folder(path)
-        except memo.MemoError as exc:
-            raise _memo_error(exc, 404) from exc
-        return RawResponse(body=body, content_type="application/zip", filename=filename)
-    if not target.is_file():
-        raise ApiError(404, "ファイルが見つかりません。")
-    size = target.stat().st_size
-    if size > CONFIG.max_file_size:
-        raise ApiError(413, "ファイルが大きすぎます。")
-    content_type, _ = mimetypes.guess_type(str(target))
-    return RawResponse(
-        body=target.read_bytes(),
-        content_type=content_type or "application/octet-stream",
-        filename=target.name,
-    )

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
 import shutil
 import threading
 import time
+import zipfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -326,6 +328,95 @@ def write_file(site: Site, relative: str, content: str) -> dict:
         content += "\n"
     target.write_text(content, "utf-8")
     return {"path": relative, "size": target.stat().st_size}
+
+
+def create_file(site: Site, relative: str, content: str = "") -> dict:
+    """新しいファイルを作成する."""
+    target = resolve_path(site, relative)
+    if target.exists():
+        raise SiteError("すでに同じ名前が存在します。")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, "utf-8")
+    return {"path": relative, "size": target.stat().st_size}
+
+
+def create_folder(site: Site, relative: str) -> dict:
+    """新しいフォルダを作成する."""
+    target = resolve_path(site, relative)
+    if target.exists():
+        raise SiteError("すでに同じ名前が存在します。")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.mkdir(parents=True, exist_ok=True)
+    return {"path": relative}
+
+
+def rename(site: Site, source: str, destination: str) -> dict:
+    """ファイル / フォルダの名前を変更する (同じフォルダ内のみ)."""
+    src = resolve_path(site, source)
+    dst = resolve_path(site, destination)
+    if not src.exists():
+        raise SiteError(f"ファイルが見つかりません: {source}")
+    if dst.exists():
+        raise SiteError("すでに同じ名前が存在します。")
+    if dst.parent != src.parent:
+        raise SiteError("同じフォルダ内だけで名前を変更できます。")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(src), str(dst))
+    return {"from": source, "path": destination}
+
+
+def remove(site: Site, relative: str) -> dict:
+    """ファイル / フォルダを削除する (サイトルートは削除できない)."""
+    target = resolve_path(site, relative)
+    root = Path(os.path.realpath(site.path))
+    if target == root:
+        raise SiteError("サイトのルートは削除できません。")
+    if not target.exists():
+        raise SiteError(f"ファイルが見つかりません: {relative}")
+    if target.is_dir():
+        shutil.rmtree(target)
+    else:
+        target.unlink()
+    return {"path": relative}
+
+
+def sanitize_upload_name(name: str) -> str:
+    """アップロードされたファイル名を安全な名前に変換する."""
+    base = os.path.basename((name or "").replace("\\", "/")).strip()
+    base = re.sub(r"[^A-Za-z0-9._-]+", "_", base)
+    base = re.sub(r"^\.+", "", base).strip()
+    return base or "file"
+
+
+def upload_file(site: Site, directory: str, filename: str, data: bytes) -> dict:
+    """アップロードされたファイルを指定フォルダへ保存する (エクスプローラ用)."""
+    if not data:
+        raise SiteError("ファイルデータが空です。")
+    base = resolve_path(site, directory) if (directory or "").strip() else Path(site.path)
+    base.mkdir(parents=True, exist_ok=True)
+    name = sanitize_upload_name(filename)
+    target = base / name
+    index = 1
+    while target.exists():
+        target = base / f"{Path(name).stem}-{index}{Path(name).suffix}"
+        index += 1
+    target.write_bytes(data)
+    root = Path(os.path.realpath(site.path))
+    return {"path": target.relative_to(root).as_posix(), "size": len(data)}
+
+
+def archive_folder(site: Site, relative: str) -> tuple[bytes, str]:
+    """フォルダを ZIP に固める (ダウンロード用)."""
+    source = resolve_path(site, relative)
+    if not source.is_dir():
+        raise SiteError("フォルダが見つかりません。")
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for item in sorted(source.rglob("*")):
+            if item.is_dir():
+                continue
+            archive.write(item, Path(item.relative_to(source)).as_posix())
+    return buffer.getvalue(), (source.name or "site") + ".zip"
 
 
 def is_html(path: str) -> bool:
