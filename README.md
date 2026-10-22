@@ -26,6 +26,8 @@ Python パッケージのインストールは不要です。
 ## インストール
 
 ```bash
+git clone https://github.com/hirogura/htmledit.git /opt/htmledit
+cd /opt/htmledit
 sudo ./deploy/install.sh
 ```
 
