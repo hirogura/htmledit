@@ -148,6 +148,12 @@ class HtmleditHandler(BaseHTTPRequestHandler):
 
         session = terminal.TERMINALS.get(session_id, cwd)
         stop = threading.Event()
+        write_lock = threading.Lock()
+
+        def send(payload: bytes, opcode: int = websocket.OP_BINARY) -> None:
+            with write_lock:
+                self.wfile.write(websocket.encode_frame(payload, opcode))
+                self.wfile.flush()
 
         def pump_output() -> None:
             while not stop.is_set():
@@ -158,8 +164,7 @@ class HtmleditHandler(BaseHTTPRequestHandler):
                 if not data:
                     break
                 try:
-                    self.wfile.write(websocket.encode_frame(data, websocket.OP_BINARY))
-                    self.wfile.flush()
+                    send(data)
                 except (BrokenPipeError, OSError):
                     break
             stop.set()
@@ -168,19 +173,16 @@ class HtmleditHandler(BaseHTTPRequestHandler):
         reader.start()
 
         try:
-            self.wfile.write(
-                websocket.encode_frame(
-                    json.dumps({"type": "data", "data": terminal.TERMINAL_WELCOME}).encode("utf-8")
-                )
+            send(
+                json.dumps({"type": "data", "data": terminal.TERMINAL_WELCOME}).encode("utf-8"),
+                websocket.OP_TEXT,
             )
-            self.wfile.flush()
             while not stop.is_set():
                 opcode, payload = websocket.read_frame(self.rfile)
                 if opcode == websocket.OP_CLOSE:
                     break
                 if opcode == websocket.OP_PING:
-                    self.wfile.write(websocket.encode_frame(payload, websocket.OP_PONG))
-                    self.wfile.flush()
+                    send(payload, websocket.OP_PONG)
                     continue
                 if opcode not in (websocket.OP_TEXT, websocket.OP_BINARY):
                     continue
@@ -192,7 +194,7 @@ class HtmleditHandler(BaseHTTPRequestHandler):
                 if kind == "input":
                     session.write(str(message.get("data", "")))
                 elif kind == "resize":
-                    session.resize(message.get("cols", 100), message.get("rows", 30))
+                    session.resize(message.get("cols", 120), message.get("rows", 35))
                 elif kind == "command":
                     session.write(str(message.get("data", "")) + "\n")
         except (ConnectionError, OSError):

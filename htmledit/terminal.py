@@ -69,7 +69,7 @@ def terminal_env() -> dict[str, str]:
 class TerminalSession:
     """1 つの bash セッション (PTY)."""
 
-    def __init__(self, session_id: str, cwd: str, cols: int = 100, rows: int = 30) -> None:
+    def __init__(self, session_id: str, cwd: str, cols: int = 120, rows: int = 35) -> None:
         self.id = session_id
         self.cwd = cwd
         self.cols = cols
@@ -134,7 +134,10 @@ class TerminalManager:
         with self._lock:
             session = self._sessions.get(session_id)
             if session is not None and session.process.poll() is None:
-                return session
+                if session.cwd == cwd:
+                    return session
+                # ディレクトリが変わったら作り直す (selfcode と同じ挙動)
+                session.close()
             session = TerminalSession(session_id, cwd)
             self._sessions[session_id] = session
             return session

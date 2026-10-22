@@ -58,6 +58,7 @@
     var self = this;
     setTimeout(function () {
       self.fit();
+      self.focus();
     }, 30);
   };
 
@@ -99,6 +100,13 @@
     this.socket.onopen = function () {
       self.onStatus("接続しました", "ok");
       self.fit();
+      // 寸法が求まらない場合でも大きめの既定サイズで告知する
+      self.send({
+        type: "resize",
+        cols: self.term ? self.term.cols : 120,
+        rows: self.term ? self.term.rows : 35
+      });
+      self._flush();
     };
     this.socket.onmessage = function (event) {
       var message;
@@ -119,6 +127,15 @@
     };
   };
 
+  /* 接続完了前の送信分を保持して、接続後にまとめて送る */
+  TerminalPanel.prototype._flush = function () {
+    var pending = this.queue || [];
+    this.queue = [];
+    for (var index = 0; index < pending.length; index += 1) {
+      pending[index]();
+    }
+  };
+
   TerminalPanel.prototype.disconnect = function () {
     if (this.socket) {
       try {
@@ -131,19 +148,37 @@
   };
 
   TerminalPanel.prototype.send = function (message) {
-    if (!this.socket || this.socket.readyState !== 1) {
-      return false;
+    if (this.socket && this.socket.readyState === 1) {
+      try {
+        this.socket.send(JSON.stringify(message));
+        return true;
+      } catch (error) {
+        return false;
+      }
     }
-    try {
-      this.socket.send(JSON.stringify(message));
-      return true;
-    } catch (error) {
-      return false;
+    // 未接続 (接続中) の場合はキューに積んでから送る
+    if (!this.queue) {
+      this.queue = [];
     }
+    var self = this;
+    this.queue.push(function () {
+      self.send(message);
+    });
+    return false;
   };
 
   TerminalPanel.prototype.run = function (command) {
     return this.send({ type: "command", data: command });
+  };
+
+  TerminalPanel.prototype.focus = function () {
+    if (this.term) {
+      try {
+        this.term.focus();
+      } catch (error) {
+        /* noop */
+      }
+    }
   };
 
   TerminalPanel.prototype.write = function (text) {

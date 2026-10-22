@@ -1462,6 +1462,7 @@
     el.btnTerminalClose = $("btn-terminal-close");
     el.btnTerminalOpencode = $("btn-terminal-opencode");
     el.terminalCwd = $("terminal-cwd");
+    el.terminalStatus = $("terminal-status");
 
     editor = window.htmleditEditor.create({
       host: $("wysiwyg-host"),
@@ -1490,8 +1491,9 @@
       terminalPanel = window.htmleditTerminal.create({
         host: $("terminal"),
         cwdLabel: $("terminal-cwd"),
-        onStatus: function (message) {
-          el.terminalCwd.title = message;
+        onStatus: function (message, kind) {
+          el.terminalStatus.textContent = message;
+          el.terminalStatus.className = "terminal-status" + (kind ? " is-" + kind : "");
         }
       });
     } catch (error) {
