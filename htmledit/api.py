@@ -178,11 +178,12 @@ def add_site(request: Request, _params: dict) -> dict:
         raise ApiError(400, "GitHub の URL を入力してください。")
     branch = str(payload.get("branch", "")).strip()
     name = str(payload.get("name", "")).strip()
+    site_url = str(payload.get("siteUrl", payload.get("site_url", "")) or "").strip()
     username = str(payload.get("username", "")).strip()
     token = str(payload.get("token", "")).strip()
     auth = gitcmd.Auth(username=username, token=token)
     try:
-        site = REGISTRY.add(url, branch=branch, name=name, auth=auth)
+        site = REGISTRY.add(url, branch=branch, name=name, auth=auth, site_url=site_url)
     except SiteError as exc:
         raise ApiError(400, str(exc)) from exc
     except gitcmd.GitError as exc:
@@ -199,6 +200,13 @@ def update_site(request: Request, params: dict) -> dict:
     name = str(payload.get("name", "")).strip()
     if name:
         site = REGISTRY.rename(site.id, name)
+    if "siteUrl" in payload or "site_url" in payload:
+        raw_site_url = payload.get("siteUrl", payload.get("site_url", ""))
+        site_url = str(raw_site_url or "").strip()
+        try:
+            site = REGISTRY.set_site_url(site.id, site_url)
+        except SiteError as exc:
+            raise ApiError(400, str(exc)) from exc
     username = str(payload.get("username", "")).strip()
     token = str(payload.get("token", "")).strip()
     if username or token:

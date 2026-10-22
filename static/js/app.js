@@ -225,10 +225,21 @@
       var item = document.createElement("li");
       item.className = "site-item" + (site.id === state.siteId ? " is-active" : "");
 
-      var name = document.createElement("span");
-      name.className = "site-item-name";
+      var name;
+      if (site.site_url) {
+        /* サイトURL が登録されていれば表示名を別タブで開くリンクにする */
+        name = document.createElement("a");
+        name.className = "site-item-name site-item-link";
+        name.href = site.site_url;
+        name.target = "_blank";
+        name.rel = "noopener noreferrer";
+        name.title = site.site_url + " を別タブで開く";
+      } else {
+        name = document.createElement("span");
+        name.className = "site-item-name";
+        name.title = site.url;
+      }
       name.textContent = site.name;
-      name.title = site.url;
       item.appendChild(name);
 
       if (site.hasToken) {
@@ -269,11 +280,19 @@
   }
 
   function selectSite(siteId) {
+    var changed = siteId !== state.siteId;
+    if (changed && editor && editor.dirty) {
+      if (!confirm("未保存の変更があります。サイトを変更しますか？")) {
+        return;
+      }
+    }
     state.siteId = siteId;
-    state.path = null;
-    editor.clear();
-    el.currentFile.textContent = "ファイルが選択されていません";
-    setBaseHref(siteId);
+    if (changed) {
+      state.path = null;
+      editor.clear();
+      el.currentFile.textContent = "ファイルが選択されていません";
+      setBaseHref(siteId);
+    }
     renderSites();
     refreshTree();
     refreshGit();
@@ -330,6 +349,7 @@
     el.siteBranch.value = "";
     el.siteBranch.disabled = false;
     el.siteName.value = "";
+    el.siteSiteUrl.value = "";
     el.siteUsername.value = "";
     el.siteToken.value = "";
     el.siteToken.placeholder = "ghp_xxxxxxxx";
@@ -347,6 +367,7 @@
     el.siteBranch.value = site.branch || "";
     el.siteBranch.disabled = true;
     el.siteName.value = site.name;
+    el.siteSiteUrl.value = site.site_url || "";
     el.siteUsername.value = site.username || "";
     el.siteToken.value = "";
     el.siteToken.placeholder = site.hasToken ? "登録済み (空欄で変更なし)" : "ghp_xxxxxxxx";
@@ -354,16 +375,44 @@
     el.siteUsername.focus();
   }
 
+  /* サイトURL を正規化する (http / https のみ許可) */
+  function normalizeSiteUrl(value) {
+    var text = (value || "").trim();
+    if (!text) {
+      return "";
+    }
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:(?![0-9])/.test(text)) {
+      if (!/^https?:\/\//i.test(text)) {
+        throw new Error("サイト URL は http / https で指定してください。");
+      }
+    } else {
+      text = "https://" + text.replace(/^\/+/, "");
+    }
+    if (!/^https?:\/\/[^/\s?#]+/i.test(text)) {
+      throw new Error("サイト URL の形式を解釈できません。");
+    }
+    return text;
+  }
+
   function submitSiteDialog() {
     var username = el.siteUsername.value.trim();
     var token = el.siteToken.value.trim();
+    var siteUrl = "";
+
+    try {
+      siteUrl = normalizeSiteUrl(el.siteSiteUrl.value);
+    } catch (error) {
+      el.siteError.textContent = error.message;
+      el.siteError.hidden = false;
+      return;
+    }
 
     if (state.editingSiteId) {
       busy(el.btnSiteSubmit, true);
       el.btnSiteSubmit.disabled = true;
       api("/api/sites/" + encodeURIComponent(state.editingSiteId), {
         method: "PATCH",
-        body: { name: el.siteName.value.trim(), username: username, token: token }
+        body: { name: el.siteName.value.trim(), siteUrl: siteUrl, username: username, token: token }
       })
         .then(function (payload) {
           el.siteDialog.close();
@@ -395,6 +444,7 @@
         url: url,
         branch: el.siteBranch.value.trim(),
         name: el.siteName.value.trim(),
+        siteUrl: siteUrl,
         username: username,
         token: token
       }
@@ -2013,6 +2063,7 @@
     el.siteUrl = $("site-url");
     el.siteBranch = $("site-branch");
     el.siteName = $("site-name");
+    el.siteSiteUrl = $("site-site-url");
     el.siteUsername = $("site-username");
     el.siteToken = $("site-token");
     el.siteDialogTitle = $("site-dialog-title");

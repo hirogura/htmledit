@@ -380,6 +380,17 @@ textarea.input {
   white-space: nowrap;
 }
 
+/* サイトURL が登録された表示名 (別タブで開くリンク) */
+.site-item-link {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.site-item-link:hover {
+  text-decoration: underline;
+}
+
 .site-item-remove {
   border: none;
   background: transparent;

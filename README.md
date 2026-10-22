@@ -96,6 +96,7 @@ https://<tailnet のホスト名>:3372/    # tailscale serve 経由 (HTTPS)
    - `https://github.com/owner/repo/tree/branch` のようなブランチ指定 URL にも対応
    - `git@github.com:owner/repo.git` のような SSH URL にも対応
    - プライベートリポジトリや push 用に「ユーザーID」「PAT」を入力できる (後述)
+   - 公開サイトの URL を「サイトURL」に入力すると、サイドバーの表示名がその URL へのリンクになる (後述)
 2. 追加すると、左ペインにはこのリポジトリのルートを基準としたフォルダ一覧が表示される
 3. ファイル (.html / .htm) をクリックすると中央ペインで WYSIWYG 編集ができる
    - 「ソース」タブでファイル全体 (head を含む) を直接編集することも可能
@@ -103,6 +104,16 @@ https://<tailnet のホスト名>:3372/    # tailscale serve 経由 (HTTPS)
    - `Ctrl+S` で保存
 4. 右ペインでコミットメッセージを入力して「コミット」→「プッシュ」
    - 「プル」でリモートの変更を取得してから編集する運用も可能
+
+## サイトURL (公開サイトのリンク)
+
+「認証情報を編集」ウィンドウ (サイト横の 🔑 ボタン) には **サイトURL** の項目があります。
+
+- 公開中のサイトの URL (例: `https://example.com`) を登録します
+- 登録すると、サイドバーの表示名がリンクになり、**クリックで新しいタブ**に開きます
+- URL は `http` / `https` のみ指定できます (スキームが無ければ `https://` を補います)
+- 空欄にすると未設定に戻ります
+- サイトURL は `data/sites.json` に保存されます
 
 ## リンクと画像の編集 (プロパティペイン)
 
@@ -252,7 +263,7 @@ SSH リモート (`git@github.com:...`) では SSH 鍵が使われます。
 
 | 表示 | 動作 |
 | --- | --- |
-| `v.1.0.2` | 実行中のバージョン |
+| `v.1.0.3` | 実行中のバージョン |
 | opencode | opencode パネルを開き、opencode (AI) を起動する (未インストールなら自動インストール) |
 | プロパティ | プロパティペイン (リンク / 画像の設定) の表示 / 非表示を切り替える |
 | GitHub | GitHub ペイン (リポジトリ情報と pull / commit / push) の表示 / 非表示を切り替える |
@@ -380,7 +391,7 @@ htmledit/
 ```
 /opt/lxd-data/
 ├── htmledit-data/       サイト登録情報・認証情報と clone したリポジトリ
-│   ├── sites.json       登録済みサイト
+│   ├── sites.json       登録済みサイト (表示名 / サイトURL など)
 │   ├── credentials.json サイトごとのユーザーID / PAT (0600)
 │   └── repos/           clone したリポジトリ
 └── htmledit-memo/       メモの保存先 (memo.md)
@@ -392,8 +403,8 @@ htmledit/
 | --- | --- | --- |
 | GET | `/api/version` | バージョンと自身のリポジトリ状態 |
 | GET | `/api/sites` | 登録済みサイト一覧 |
-| POST | `/api/sites` | サイトの追加 (GitHub URL) |
-| PATCH | `/api/sites/{id}` | サイト名・ユーザーID・PAT の更新 |
+| POST | `/api/sites` | サイトの追加 (GitHub URL / サイトURL) |
+| PATCH | `/api/sites/{id}` | サイト名・サイトURL・ユーザーID・PAT の更新 |
 | DELETE | `/api/sites/{id}` | サイトの削除 |
 | GET | `/api/sites/{id}/tree` | ファイルツリー |
 | GET | `/api/sites/{id}/file?path=` | ファイル読み取り |

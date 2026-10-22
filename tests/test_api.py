@@ -225,6 +225,53 @@ class ApiTestCase(unittest.TestCase):
         stored = json.loads(credentials_file.read_text("utf-8"))
         self.assertNotIn(site["id"], stored.get("sites", {}))
 
+    def test_site_url(self):
+        status, payload = self.request(
+            "POST",
+            "/api/sites",
+            {"url": str(self.remote), "siteUrl": "https://example.com"},
+        )
+        self.assertEqual(status, 200, payload)
+        site = payload["site"]
+        self.assertEqual(site["site_url"], "https://example.com")
+
+        # 認証情報を編集する画面からの更新
+        status, payload = self.request(
+            "PATCH", f"/api/sites/{site['id']}", {"siteUrl": "https://example.org/blog"}
+        )
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["site"]["site_url"], "https://example.org/blog")
+
+        # 保存され、再起動後も引き継がれる
+        status, payload = self.request("GET", "/api/sites")
+        stored = [item for item in payload["sites"] if item["id"] == site["id"]][0]
+        self.assertEqual(stored["site_url"], "https://example.org/blog")
+
+        # 空文字で解除できる
+        status, payload = self.request("PATCH", f"/api/sites/{site['id']}", {"siteUrl": ""})
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["site"]["site_url"], "")
+
+        self.request("DELETE", f"/api/sites/{site['id']}", {})
+
+    def test_site_url_validation(self):
+        from htmledit.sites import SiteError, normalize_site_url
+
+        self.assertEqual(normalize_site_url(""), "")
+        self.assertEqual(normalize_site_url("  https://example.com  "), "https://example.com")
+        self.assertEqual(normalize_site_url("example.com"), "https://example.com")
+        with self.assertRaises(SiteError):
+            normalize_site_url("javascript:alert(1)")
+        with self.assertRaises(SiteError):
+            normalize_site_url("ftp://example.com")
+
+        status, payload = self.request(
+            "POST",
+            "/api/sites",
+            {"url": str(self.remote), "siteUrl": "javascript:alert(1)"},
+        )
+        self.assertEqual(status, 400, payload)
+
     def test_credential_helper_uses_site_token(self):
         from htmledit import gitcmd
 

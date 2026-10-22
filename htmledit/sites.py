@@ -50,6 +50,7 @@ class Site:
     owner: str = ""
     repo: str = ""
     branch: str = ""
+    site_url: str = ""
     created_at: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict:
@@ -64,6 +65,31 @@ def _strip_git_suffix(value: str) -> str:
 
 def _split_path_parts(path: str) -> list[str]:
     return [unquote(part) for part in path.strip("/").split("/") if part]
+
+
+_SCHEME_RE = re.compile(r"^([a-zA-Z][a-zA-Z0-9+.\-]*):(?![0-9])")
+
+
+def normalize_site_url(raw: str) -> str:
+    """公開サイトの URL を正規化する (http / https のみ許可).
+
+    スキームの無い入力には `https://` を補う。空文字は「未設定」を意味する。
+    """
+    text = (raw or "").strip()
+    if not text:
+        return ""
+    match = _SCHEME_RE.match(text)
+    if match:
+        if match.group(1).lower() not in ("http", "https"):
+            raise SiteError(f"サイト URL は http / https で指定してください: {raw}")
+    else:
+        text = "https://" + text.lstrip("/")
+    split = urlsplit(text)
+    if split.scheme.lower() not in ("http", "https"):
+        raise SiteError(f"サイト URL は http / https で指定してください: {raw}")
+    if not split.netloc:
+        raise SiteError(f"サイト URL の形式を解釈できません: {raw}")
+    return text
 
 
 def parse_repo_url(raw: str) -> RepoRef:
@@ -160,6 +186,7 @@ class SiteRegistry:
                         owner=item.get("owner", ""),
                         repo=item.get("repo", ""),
                         branch=item.get("branch", ""),
+                        site_url=item.get("site_url", "") or "",
                         created_at=item.get("created_at", time.time()),
                     )
                 except KeyError:
@@ -195,9 +222,17 @@ class SiteRegistry:
                 index += 1
         return candidate
 
-    def add(self, url: str, branch: str = "", name: str = "", auth: gitcmd.Auth | None = None) -> Site:
+    def add(
+        self,
+        url: str,
+        branch: str = "",
+        name: str = "",
+        auth: gitcmd.Auth | None = None,
+        site_url: str = "",
+    ) -> Site:
         ref = parse_repo_url(url)
         branch = branch or ref.branch or ""
+        site_url = normalize_site_url(site_url)
         site_id = self._unique_id(ref.slug)
         dest = CONFIG.repos_dir / site_id
         CONFIG.ensure_dirs()
@@ -224,6 +259,7 @@ class SiteRegistry:
             owner=ref.owner,
             repo=ref.repo,
             branch=current or branch,
+            site_url=site_url,
         )
         with self._lock:
             self._sites[site.id] = site
@@ -244,6 +280,13 @@ class SiteRegistry:
     def rename(self, site_id: str, name: str) -> Site:
         site = self.get(site_id)
         site.name = name.strip() or site.name
+        self.save()
+        return site
+
+    def set_site_url(self, site_id: str, site_url: str) -> Site:
+        """公開サイトの URL を設定する (空文字で解除)."""
+        site = self.get(site_id)
+        site.site_url = normalize_site_url(site_url)
         self.save()
         return site
 
