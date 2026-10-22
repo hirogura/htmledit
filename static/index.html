@@ -13,10 +13,11 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.1.0.3</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.1.1.0</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
+        <button type="button" class="btn btn-toggle is-active" id="btn-toggle-site" title="サイトパネルの表示 / 非表示を切り替える">サイト</button>
         <button type="button" class="btn" id="btn-opencode" title="opencode (AI) を使ったターミナルを開く">opencode</button>
         <button type="button" class="btn btn-toggle is-active" id="btn-toggle-prop" title="プロパティパネルの表示 / 非表示を切り替える">プロパティ</button>
         <button type="button" class="btn btn-toggle is-active" id="btn-toggle-git" title="GitHub パネルの表示 / 非表示を切り替える">GitHub</button>
@@ -27,7 +28,7 @@
     </header>
 
     <main class="workspace" id="workspace">
-      <aside class="pane sidebar">
+      <aside class="pane sidebar" id="sidebar-pane">
         <div class="pane-head">
           <h2 class="pane-title">サイト</h2>
           <button type="button" class="btn btn-primary btn-sm" id="btn-add-site">+ 追加</button>

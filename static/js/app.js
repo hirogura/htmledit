@@ -1898,6 +1898,7 @@
   /* パネルの表示 / 非表示の切り替え                                      */
   /* ------------------------------------------------------------------ */
   var PANELS = {
+    site: { pane: "sidebarPane", button: "btnToggleSite", label: "サイトパネル" },
     prop: { pane: "propPane", button: "btnToggleProp", label: "プロパティパネル" },
     git: { pane: "gitPane", button: "btnToggleGit", label: "GitHub パネル" },
     terminal: { pane: "terminalPane", button: "btnOpencode", label: "ターミナルパネル" },
@@ -1970,6 +1971,9 @@
     el.btnCommit.addEventListener("click", runCommit);
     el.btnUpdate.addEventListener("click", runUpdate);
     el.btnRestart.addEventListener("click", runRestart);
+    el.btnToggleSite.addEventListener("click", function () {
+      togglePane("site");
+    });
     el.btnToggleProp.addEventListener("click", function () {
       togglePane("prop");
     });
@@ -2041,6 +2045,7 @@
     el.btnUpdate = $("btn-update");
     el.btnRestart = $("btn-restart");
     el.siteList = $("site-list");
+    el.sidebarPane = $("sidebar-pane");
     el.btnAddSite = $("btn-add-site");
     el.tree = $("file-tree");
     el.treeTitle = $("tree-title");
@@ -2073,6 +2078,7 @@
     el.btnRefreshTree = $("btn-refresh-tree");
     el.btnRefreshGit = $("btn-refresh-git");
     el.btnClearSelection = $("btn-clear-selection");
+    el.btnToggleSite = $("btn-toggle-site");
     el.btnToggleProp = $("btn-toggle-prop");
     el.btnToggleGit = $("btn-toggle-git");
     el.btnToggleMemo = $("btn-toggle-memo");
