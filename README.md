@@ -37,6 +37,8 @@ sudo ./deploy/install.sh
 2. `/etc/systemd/system/htmledit.service` を作成
 3. `/etc/htmledit/htmledit.env` を作成 (`GITHUB_TOKEN` や basic 認証はここで設定)
 4. `systemctl enable` + `systemctl restart` で起動し、起動できなければログを表示して異常終了
+5. `tailscale serve` に登録して、tailnet 内へ HTTPS で公開
+   (tailnet を使わない環境では自動スキップされます)
 
 `install.sh` は環境変数で上書きできます。LXD 以外 (VPS / 物理マシン) でも
 保存先やポートを変更すればインストールできます。
@@ -51,6 +53,7 @@ sudo ./deploy/install.sh
 | `HTMLEDIT_DATA_DIR` | `/opt/lxd-data/htmledit-data` | サイト登録情報と認証情報の保存先 |
 | `HTMLEDIT_MEMO_DIR` | `/opt/lxd-data/htmledit-memo` | メモの保存先 |
 | `HTMLEDIT_ENV_DIR` | `/etc/htmledit` | 環境設定ファイルの配置先 |
+| `HTMLEDIT_TAILSCALE_SERVE` | `auto` | `tailscale serve` への登録 (1 / 0 / auto) |
 
 例: ポートと保存先を変更してインストールする。
 
@@ -232,7 +235,7 @@ SSH リモート (`git@github.com:...`) では SSH 鍵が使われます。
 
 | 表示 | 動作 |
 | --- | --- |
-| `v.0.9.3` | 実行中のバージョン |
+| `v.0.9.4` | 実行中のバージョン |
 | opencode | opencode パネルを開き、opencode (AI) を起動する (未インストールなら自動インストール) |
 | プロパティ | プロパティペイン (リンク / 画像の設定) の表示 / 非表示を切り替える |
 | GitHub | GitHub ペイン (リポジトリ情報と pull / commit / push) の表示 / 非表示を切り替える |
@@ -249,6 +252,10 @@ SSH リモート (`git@github.com:...`) では SSH 鍵が使われます。
 
 `tailscale serve` を使うと、ポートを外部に開かずに tailnet 内へ HTTPS で公開できます。
 
+`install.sh` は既定で `tailscale serve` への登録まで行います
+(`tailscaled` が動いていて、待ち受けが `127.0.0.1` の場合)。
+設定し直すときは次のスクリプトを実行します。
+
 ```bash
 sudo ./deploy/tailscale-serve.sh
 ```
@@ -263,6 +270,14 @@ sudo ./deploy/tailscale-serve.sh
 
 証明書は Tailscale が自動で Let's Encrypt の証明書を発行します。
 `tailscale serve status` で公開先を確認、`tailscale serve --https=443 off` で公開を停止します。
+
+`install.sh` での公開は `HTMLEDIT_TAILSCALE_SERVE` で切り替えられます。
+
+| 値 | 動作 |
+| --- | --- |
+| `auto` (既定) | `tailscaled` が動いていて待ち受けが `127.0.0.1` のときだけ登録する |
+| `1` | 必ず登録する (待ち受けが `0.0.0.0` なら `127.0.0.1` に変更する) |
+| `0` | 登録しない (手動で `tailscale-serve.sh` を実行する) |
 
 ## Cloudflare 連携
 

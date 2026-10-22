@@ -12,6 +12,10 @@
 #   HTMLEDIT_DATA_DIR     データ保存先 (既定: /opt/lxd-data/htmledit-data)
 #   HTMLEDIT_MEMO_DIR     メモ保存先 (既定: /opt/lxd-data/htmledit-memo)
 #   HTMLEDIT_ENV_DIR      環境設定ファイルの配置先 (既定: /etc/htmledit)
+#   HTMLEDIT_TAILSCALE_SERVE
+#                         tailscale serve の登録 (既定: auto)
+#                         1 で有効化 / 0 で無効化 / auto は tailscaled が
+#                         動いていて待ち受けが 127.0.0.1 のときだけ有効
 set -euo pipefail
 
 INSTALL_DIR="${HTMLEDIT_INSTALL_DIR:-/opt/htmledit}"
@@ -24,6 +28,7 @@ DATA_DIR="${HTMLEDIT_DATA_DIR:-/opt/lxd-data/htmledit-data}"
 ENV_DIR="${HTMLEDIT_ENV_DIR:-/etc/htmledit}"
 ENV_FILE="${ENV_DIR}/htmledit.env"
 UNIT_FILE="${HTMLEDIT_UNIT_FILE:-/etc/systemd/system/${SERVICE_NAME}.service}"
+SERVE_MODE="${HTMLEDIT_TAILSCALE_SERVE:-auto}"
 
 fail() {
   echo "!! $*" >&2
@@ -145,30 +150,86 @@ chown -R "${RUN_USER}:${RUN_GROUP}" "${DATA_DIR}"
 chown -R "${RUN_USER}:${RUN_GROUP}" "${MEMO_DIR}"
 
 # --- 起動 -------------------------------------------------------------------
-echo "==> systemd を再読み込みして起動"
-systemctl daemon-reload
-systemctl enable "${SERVICE_NAME}.service"
-systemctl restart "${SERVICE_NAME}.service"
+start_service() {
+  systemctl daemon-reload
+  systemctl enable "${SERVICE_NAME}.service"
+  systemctl restart "${SERVICE_NAME}.service"
 
-# 起動直後にプロセス Died して再起動を繰り返す場合があるため、
-# 自動再起動の回数が増えるかを見て判断する
-restarts_before="$(systemctl show -p NRestarts --value "${SERVICE_NAME}.service" 2>/dev/null || echo 0)"
+  # 起動直後にプロセス Died して再起動を繰り返す場合があるため、
+  # 自動再起動の回数が増えるかを見て判断する
+  local restarts_before restarts_after state
+  restarts_before="$(systemctl show -p NRestarts --value "${SERVICE_NAME}.service" 2>/dev/null || echo 0)"
 
-for _ in $(seq 1 20); do
-  if [ "$(systemctl show -p ActiveState --value "${SERVICE_NAME}.service" 2>/dev/null)" = "active" ]; then
-    break
+  for _ in $(seq 1 20); do
+    if [ "$(systemctl show -p ActiveState --value "${SERVICE_NAME}.service" 2>/dev/null)" = "active" ]; then
+      break
+    fi
+    sleep 0.5
+  done
+
+  sleep 3
+
+  state="$(systemctl show -p ActiveState --value "${SERVICE_NAME}.service" 2>/dev/null)"
+  restarts_after="$(systemctl show -p NRestarts --value "${SERVICE_NAME}.service" 2>/dev/null || echo 0)"
+
+  if [ "${state}" != "active" ] || [ "${restarts_after}" != "${restarts_before}" ]; then
+    journalctl -u "${SERVICE_NAME}.service" --no-pager --lines=30 >&2 || true
+    fail "サービスが起動しませんでした (ActiveState=${state})。"
   fi
-  sleep 0.5
-done
+}
 
-sleep 3
+echo "==> systemd を再読み込みして起動"
+start_service
 
-state="$(systemctl show -p ActiveState --value "${SERVICE_NAME}.service" 2>/dev/null)"
-restarts_after="$(systemctl show -p NRestarts --value "${SERVICE_NAME}.service" 2>/dev/null || echo 0)"
+# --- tailscale serve --------------------------------------------------------
+# 実際に適用される設定 (環境設定ファイルの値を優先する)
+EFFECTIVE_HOST="$(sed -n 's|^HTMLEDIT_HOST=||p' "${ENV_FILE}" | tail -n 1)"
+EFFECTIVE_PORT="$(sed -n 's|^HTMLEDIT_PORT=||p' "${ENV_FILE}" | tail -n 1)"
+EFFECTIVE_HOST="${EFFECTIVE_HOST:-${HOST}}"
+EFFECTIVE_PORT="${EFFECTIVE_PORT:-${PORT}}"
 
-if [ "${state}" != "active" ] || [ "${restarts_after}" != "${restarts_before}" ]; then
-  journalctl -u "${SERVICE_NAME}.service" --no-pager --lines=30 >&2 || true
-  fail "サービスが起動しませんでした (ActiveState=${state})。"
+serve_enabled="no"
+case "${SERVE_MODE}" in
+  1|yes|true)
+    serve_enabled="yes"
+    ;;
+  0|no|false)
+    serve_enabled="no"
+    ;;
+  *)
+    serve_enabled="auto"
+    ;;
+esac
+
+if [ "${serve_enabled}" = "auto" ]; then
+  if ! command -v tailscale >/dev/null 2>&1; then
+    serve_enabled="no"
+  elif ! systemctl is-active --quiet tailscaled; then
+    serve_enabled="no"
+  elif [ "${EFFECTIVE_HOST}" != "127.0.0.1" ] && [ "${EFFECTIVE_HOST}" != "localhost" ]; then
+    serve_enabled="no"
+    echo "==> tailscale serve はスキップします (待ち受けが ${EFFECTIVE_HOST} のため直接アクセス用)"
+  else
+    serve_enabled="yes"
+  fi
+fi
+
+public_url=""
+if [ "${serve_enabled}" = "yes" ]; then
+  # serve は 127.0.0.1 宛てにプロキシするため、待ち受けを絞る必要がある
+  if [ "${EFFECTIVE_HOST}" != "127.0.0.1" ]; then
+    echo "==> tailscale serve のため ${ENV_FILE} の HTMLEDIT_HOST を 127.0.0.1 に変更します"
+    sed -i "s|^HTMLEDIT_HOST=.*|HTMLEDIT_HOST=127.0.0.1|" "${ENV_FILE}"
+    EFFECTIVE_HOST="127.0.0.1"
+    start_service
+  fi
+
+  echo "==> tailscale serve を設定します (http://127.0.0.1:${EFFECTIVE_PORT})"
+  if ! tailscale serve --bg --https="${EFFECTIVE_PORT}" "http://127.0.0.1:${EFFECTIVE_PORT}"; then
+    fail "tailscale serve の設定に失敗しました。tailnet の ACL で serve が有効か確認してください。"
+  fi
+
+  public_url="$(tailscale status --json 2>/dev/null | "${PYTHON_BIN}" -c 'import json,sys; print((json.load(sys.stdin).get("Self") or {}).get("DNSName","").rstrip("."))' 2>/dev/null || true)"
 fi
 
 systemctl --no-pager --lines=5 status "${SERVICE_NAME}.service" || true
@@ -180,13 +241,15 @@ echo "    データ保存先:   ${DATA_DIR}"
 echo "    メモ保存先:     ${MEMO_DIR}"
 echo "    環境設定ファイル: ${ENV_FILE}"
 echo "    ユニット名:     ${SERVICE_NAME}.service"
-echo "    待ち受け:       ${HOST}:${PORT}"
+echo "    待ち受け:       ${EFFECTIVE_HOST}:${EFFECTIVE_PORT}"
 echo ""
-if [ "${HOST}" = "127.0.0.1" ] || [ "${HOST}" = "localhost" ]; then
-  echo "==> 完了: http://127.0.0.1:${PORT}/ でアクセスできます (このホストからのみ)。"
-  echo "    外部からアクセスする場合は tailscale serve を使うか、"
-  echo "    ${ENV_FILE} の HTMLEDIT_HOST を 0.0.0.0 に変更して再起動してください。"
-  echo "    (tailscale serve: sudo ${INSTALL_DIR}/deploy/tailscale-serve.sh)"
+if [ -n "${public_url}" ]; then
+  echo "==> 完了: https://${public_url}:${EFFECTIVE_PORT}/ でアクセスできます (tailnet のみ)。"
+  echo "    serve の設定: tailscale serve status"
 else
-  echo "==> 完了: http://<このサーバーの IP>:${PORT}/ でアクセスできます。"
+  echo "==> 完了: http://${EFFECTIVE_HOST}:${EFFECTIVE_PORT}/ でアクセスできます。"
+  if [ "${EFFECTIVE_HOST}" = "127.0.0.1" ] || [ "${EFFECTIVE_HOST}" = "localhost" ]; then
+    echo "    このホストからのみアクセスできます。外部から使う場合は tailscale serve を設定してください。"
+    echo "    (sudo ${INSTALL_DIR}/deploy/tailscale-serve.sh)"
+  fi
 fi
