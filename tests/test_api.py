@@ -122,10 +122,12 @@ class ApiTestCase(unittest.TestCase):
             return exc.code, exc.read().decode("utf-8", "replace"), exc.headers.get("Content-Type", "")
 
     def test_version(self):
+        from htmledit import __version__
+
         status, payload = self.request("GET", "/api/version")
         self.assertEqual(status, 200)
-        self.assertEqual(payload["version"], "0.9.1")
-        self.assertEqual(payload["label"], "v.0.9.1")
+        self.assertEqual(payload["version"], __version__)
+        self.assertEqual(payload["label"], f"v.{__version__}")
 
     def test_site_lifecycle(self):
         status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})

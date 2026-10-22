@@ -2,8 +2,13 @@
 .env.*
 !.env.example
 
-credentials.*
-secrets.*
+# 認証情報・秘密情報ファイル (追跡しない)
+# ※ ソースコード htmledit/credentials.py は追跡対象
+/credentials.*
+credentials.json
+credentials.yaml
+credentials.yml
+/secrets.*
 .git-credentials
 
 *.db

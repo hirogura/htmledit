@@ -33,9 +33,19 @@ sudo ./deploy/install.sh
 
 `install.sh` は次のことを行います。
 
-1. `/etc/systemd/system/htmledit.service` を作成
-2. `/etc/htmledit/htmledit.env` を作成 (`GITHUB_TOKEN` や basic 認証はここで設定)
-3. `systemctl enable --now htmledit` で起動
+1. Python とモジュールの読み込みを事前チェック
+2. `/etc/systemd/system/htmledit.service` を作成
+3. `/etc/htmledit/htmledit.env` を作成 (`GITHUB_TOKEN` や basic 認証はここで設定)
+4. `systemctl enable` + `systemctl restart` で起動し、起動できなければログを表示して異常終了
+
+`install.sh` は環境変数で上書きできます。
+
+| 変数 | 既定値 | 説明 |
+| --- | --- | --- |
+| `HTMLEDIT_INSTALL_DIR` | `/opt/htmledit` | インストール先 |
+| `HTMLEDIT_PORT` | `3372` | 待ち受けポート |
+| `HTMLEDIT_HOST` | `127.0.0.1` | 待ち受けアドレス (LAN から直接アクセスする場合は `0.0.0.0`) |
+| `HTMLEDIT_RUN_USER` | `root` | サービスの実行ユーザー |
 
 手動で起動する場合:
 
@@ -201,7 +211,7 @@ SSH リモート (`git@github.com:...`) では SSH 鍵が使われます。
 
 | 表示 | 動作 |
 | --- | --- |
-| `v.0.9.1` | 実行中のバージョン |
+| `v.0.9.2` | 実行中のバージョン |
 | opencode | opencode パネルを開き、opencode (AI) を起動する (未インストールなら自動インストール) |
 | プロパティ | プロパティペイン (リンク / 画像の設定) の表示 / 非表示を切り替える |
 | GitHub | GitHub ペイン (リポジトリ情報と pull / commit / push) の表示 / 非表示を切り替える |

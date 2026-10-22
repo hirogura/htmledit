@@ -11,7 +11,7 @@ from .config import CONFIG
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="htmledit", description="GitHub サイトの WYSIWYG エディター")
-    parser.add_argument("--host", default=None, help="待ち受けるアドレス (既定: 0.0.0.0)")
+    parser.add_argument("--host", default=None, help="待ち受けるアドレス (既定: HTMLEDIT_HOST / 127.0.0.1)")
     parser.add_argument("--port", type=int, default=None, help="待ち受けるポート (既定: 3372)")
     parser.add_argument("--data-dir", default=None, help="データ保存先ディレクトリ")
     args = parser.parse_args(argv)
