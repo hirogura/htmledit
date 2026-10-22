@@ -946,6 +946,24 @@ textarea.input {
   max-width: 45%;
 }
 
+/* メモのファイルツリー (selfcode のサイドバーと同じ構成) */
+.memo-tree {
+  flex: 0 1 auto;
+  max-height: 45%;
+  min-height: 72px;
+  overflow: auto;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.memo-tree .tree-row.is-root {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-radius: 0;
+}
+
 .memo-text {
   flex: 1 1 auto;
   width: 100%;
@@ -959,6 +977,47 @@ textarea.input {
   line-height: 1.7;
   background: #fff;
   color: var(--text);
+}
+
+/* 右クリックメニュー */
+.context-menu {
+  position: fixed;
+  z-index: 100;
+  display: none;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 172px;
+  box-shadow: 0 10px 28px rgba(31, 35, 40, 0.18);
+}
+
+.context-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.context-menu button:hover {
+  background: var(--surface-alt);
+}
+
+.context-menu button.danger {
+  color: var(--danger);
+}
+
+.context-menu hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 4px 0;
 }
 
 .memo-status {

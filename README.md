@@ -151,10 +151,27 @@ public/images/2026/10/22/photo.png
 
 トップバーの「メモ」ボタンを押すと、**画面右端（一番右）** にメモパネルが開きます。
 
-- 入力内容は `/opt/htmledit/memo/memo.md` に保存されます
-- 「保存」ボタンまたは `Ctrl+S` で保存します
-- 保存先パスを変更する場合は `HTMLEDIT_MEMO_FILE` 環境変数を設定してください
-- メモファイルはリポジトリ内に置かれるため、コミットすると GitHub にも公開されます
+メモパネルは selfcode のサイドバーと同じく、ファイルエクスプローラーとして動作します。
+
+- メモの保存先は `/opt/lxd-data/htmledit-memo/` ディレクトリです (既定のメモファイルは `memo.md`)
+- ツリーからファイルを選ぶと内容を編集でき、「保存」ボタンまたは `Ctrl+S` で保存します
+- 「折り畳む」ボタンで展開中のフォルダをすべて折りたたみます
+- ツリーを右クリックすると,selfcode と同じメニューが表示されます
+
+| メニュー | 動作 |
+| --- | --- |
+| 開く | ファイルを開いて編集する |
+| ファイル作成 | 選択中のフォルダに空ファイルを作る |
+| フォルダ作成 | 選択中のフォルダにフォルダを作る |
+| ここで opencode | 選択中のフォルダを作業ディレクトリに opencode ターミナルを起動する |
+| パスをコピー | 絶対パスをクリップボードにコピーする |
+| アップロード | ローカルからファイルをアップロードする |
+| ダウンロード | ファイルをダウンロードする (フォルダは ZIP) |
+| リネーム | 同じフォルダ内で名前を変更する |
+| 削除 | ファイル / フォルダを削除する |
+
+- 保存先ディレクトリを変更する場合は `HTMLEDIT_MEMO_DIR`、既定のメモファイルを変更する場合は `HTMLEDIT_MEMO_FILE` 環境変数を設定してください
+- メモディレクトリは Git リポジトリの外にあるため、コミットしても GitHub には公開されません
 
 ## 認証情報 (ユーザーID / PAT)
 
@@ -178,7 +195,7 @@ SSH リモート (`git@github.com:...`) では SSH 鍵が使われます。
 
 | 表示 | 動作 |
 | --- | --- |
-| `v.0.6.0` | 実行中のバージョン |
+| `v.0.8.0` | 実行中のバージョン |
 | opencode | ターミナルパネルを開き、opencode (AI) を起動する (未インストールなら自動インストール) |
 | プロパティ | プロパティペイン (リンク / 画像の設定) の表示 / 非表示を切り替える |
 | GitHub | GitHub ペイン (リポジトリ情報と pull / commit / push) の表示 / 非表示を切り替える |
@@ -262,7 +279,8 @@ Cloudflare のダッシュボードで確認してください。
 | `HTMLEDIT_AUTH_USER` / `HTMLEDIT_AUTH_PASSWORD` | (空) | basic 認証 |
 | `HTMLEDIT_COMMIT_USER_NAME` / `HTMLEDIT_COMMIT_USER_EMAIL` | `htmledit` / `htmledit@localhost` | コミットの作者情報 |
 | `HTMLEDIT_SERVICE_NAME` | `htmledit` | 再起動時に操作する systemd ユニット名 |
-| `HTMLEDIT_MEMO_FILE` | `/opt/htmledit/memo/memo.md` | メモの保存先 |
+| `HTMLEDIT_MEMO_DIR` | `/opt/lxd-data/htmledit-memo` | メモ (ファイルエクスプローラー) の保存先ディレクトリ |
+| `HTMLEDIT_MEMO_FILE` | `$HTMLEDIT_MEMO_DIR/memo.md` | 既定のメモファイル |
 | `HTMLEDIT_ALLOW_LOCAL_PATHS` | `1` | ローカルパスのリポジトリ登録を許可するか |
 
 ## ディレクトリ構成
@@ -278,6 +296,7 @@ htmledit/
 │   ├── credentials.py   サイトごとのユーザーID / PAT の保管
 │   ├── github.py        GitHub API
 │   ├── selfservice.py   アップデート / 再起動
+│   ├── memo.py          メモディレクトリ (ファイルエクスプローラー) の操作
 │   └── config.py        設定
 ├── static/              フロントエンド (依存ライブラリなし)
 │   ├── index.html
@@ -285,13 +304,14 @@ htmledit/
 │   ├── js/{app,editor,terminal}.js
 │   └── vendor/xterm/    xterm.js (MIT) — ターミナル表示用
 ├── deploy/              systemd / Tailscale / Cloudflare 関連の設定
-├── memo/                メモの保存先 (memo.md)
 ├── tests/               結合テスト
 └── data/                実行時データ (gitignore 対象)
     ├── sites.json       登録済みサイト
     ├── credentials.json サイトごとのユーザーID / PAT (0600)
     └── repos/           clone したリポジトリ
 ```
+
+メモの保存先 (`/opt/lxd-data/htmledit-memo/`) はリポジトリの外にあります。
 
 ## API
 
@@ -314,8 +334,17 @@ htmledit/
 | POST | `/api/sites/{id}/git/push` | push |
 | GET | `/api/github/repo?owner=&repo=` | GitHub リポジトリ情報 |
 | GET | `/site/{id}/{path}` | サイトのリポジトリ内のファイル配信 (エディター内の相対 URL 解決用) |
-| GET | `/api/memo` | メモの読み取り |
-| PUT | `/api/memo` | メモの保存 |
+| GET | `/api/memo` | 既定のメモの読み取り |
+| PUT | `/api/memo` | 既定のメモの保存 |
+| GET | `/api/memo/tree` | メモディレクトリのファイルツリー |
+| GET | `/api/memo/file?path=` | メモのファイル読み取り |
+| PUT | `/api/memo/file` | メモのファイル保存 |
+| POST | `/api/memo/file` | メモのファイル作成 |
+| DELETE | `/api/memo/file` | メモのファイル / フォルダ削除 |
+| POST | `/api/memo/folder` | メモのフォルダ作成 |
+| POST | `/api/memo/rename` | メモのファイル / フォルダ名変更 |
+| POST | `/api/memo/upload?dir=&name=` | メモディレクトリへのファイルアップロード |
+| GET | `/api/memo/download?path=` | メモのファイル / フォルダ (ZIP) のダウンロード |
 | GET | `/api/opencode/status` | opencode のインストール状況 |
 | POST | `/api/opencode/install` | opencode のインストール |
 | WS | `/ws/terminal` | ターミナル (PTY) の WebSocket |

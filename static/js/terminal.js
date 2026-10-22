@@ -15,6 +15,7 @@
     this.fitAddon = null;
     this.siteId = "";
     this.command = "";
+    this.cwd = null;
     this.sessionId = "htmledit-" + Math.random().toString(36).slice(2, 10);
   }
 
@@ -75,15 +76,25 @@
     }
   };
 
-  TerminalPanel.prototype.connect = function (siteId, command) {
+  TerminalPanel.prototype.connect = function (siteId, command, cwd) {
     var next = siteId || "";
     var cmd = command || "";
-    if (this.socket && next === this.siteId && cmd === this.command && this.socket.readyState <= 1) {
+    // cwd が未指定 (null) のときはサイトのディレクトリ、
+    // 空文字のときはメモのルートを使う
+    var dir = cwd === undefined || cwd === null ? null : String(cwd);
+    if (
+      this.socket &&
+      next === this.siteId &&
+      cmd === this.command &&
+      dir === this.cwd &&
+      this.socket.readyState <= 1
+    ) {
       this.fit();
       return;
     }
     this.siteId = next;
     this.command = cmd;
+    this.cwd = dir;
     this.disconnect();
     var protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     var url =
@@ -93,6 +104,7 @@
       "/ws/terminal?id=" +
       encodeURIComponent(this.sessionId + (cmd ? "-" + cmd.replace(/[^A-Za-z0-9_-]/g, "") : "")) +
       (next ? "&site=" + encodeURIComponent(next) : "") +
+      (dir !== null ? "&cwd=" + encodeURIComponent(dir) : "") +
       (cmd ? "&cmd=" + encodeURIComponent(cmd) : "");
     var self = this;
     try {

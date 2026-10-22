@@ -11,13 +11,22 @@ import socket
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
-from . import VERSION, api, sites, terminal, websocket
+from . import VERSION, api, memo, sites, terminal, websocket
 from .config import APP_ROOT, CONFIG, STATIC_DIR
 from .sites import REGISTRY, SiteError
 
 MAX_BODY = 16 * 1024 * 1024
+
+
+def _content_disposition(filename: str) -> str:
+    """ダウンロード時のファイル名ヘッダーを作る (UTF-8 のファイル名にも対応)."""
+    ascii_name = filename.encode("ascii", "replace").decode("ascii").replace('"', "")
+    return (
+        f'attachment; filename="{ascii_name}"; '
+        f"filename*=UTF-8''{quote(filename)}"
+    )
 
 
 class HtmleditHandler(BaseHTTPRequestHandler):
@@ -132,12 +141,19 @@ class HtmleditHandler(BaseHTTPRequestHandler):
             self._send_error_page(400, "WebSocket 接続が必要です。")
             return
 
-        params = parse_qs(query)
+        params = parse_qs(query, keep_blank_values=True)
         session_id = (params.get("id") or ["default"])[0]
         site_id = (params.get("site") or [""])[0]
         command = (params.get("cmd") or [""])[0].strip()
+        cwd_values = params.get("cwd")
         cwd = str(APP_ROOT)
-        if site_id:
+        if cwd_values is not None:
+            # メモディレクトリ内だけを許可する (空文字はメモのルート)
+            try:
+                cwd = str(memo.resolve(cwd_values[0].strip(), allow_root=True))
+            except memo.MemoError:
+                cwd = str(APP_ROOT)
+        elif site_id:
             try:
                 cwd = REGISTRY.get(site_id).path
             except SiteError:
@@ -258,6 +274,12 @@ class HtmleditHandler(BaseHTTPRequestHandler):
             body=body,
         )
         result = api.dispatch(request)
+        if isinstance(result, api.RawResponse):
+            extra = {}
+            if result.filename:
+                extra["Content-Disposition"] = _content_disposition(result.filename)
+            self._send_bytes(result.status, result.body, result.content_type, extra)
+            return
         self._send_json(200, result)
 
     def _handle_static(self, method: str, path: str) -> None:

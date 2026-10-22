@@ -13,7 +13,7 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.0.7.3</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.0.8.0</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
@@ -135,11 +135,13 @@
           <h2 class="pane-title">メモ</h2>
           <span class="memo-path" id="memo-path"></span>
           <div class="pane-head-actions">
-            <button type="button" class="btn btn-sm btn-primary" id="btn-memo-save">保存</button>
+            <button type="button" class="btn btn-sm" id="btn-memo-collapse" title="展開中のフォルダをすべて折りたたむ">折り畳む</button>
+            <button type="button" class="btn btn-sm btn-primary" id="btn-memo-save" title="メモを保存 (Ctrl+S)">保存</button>
             <button type="button" class="btn btn-ghost btn-sm" id="btn-memo-close" title="閉じる">×</button>
           </div>
         </div>
-        <textarea class="memo-text" id="memo-text" spellcheck="false" placeholder="メモを記入すると /opt/htmledit/memo/memo.md に保存されます"></textarea>
+        <div class="memo-tree" id="memo-tree"></div>
+        <textarea class="memo-text" id="memo-text" spellcheck="false" placeholder="メモを記入すると /opt/lxd-data/htmledit-memo/memo.md に保存されます"></textarea>
         <div class="memo-status" id="memo-status"></div>
       </aside>
     </main>

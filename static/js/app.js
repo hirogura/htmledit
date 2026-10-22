@@ -13,7 +13,14 @@
     version: null,
     collapsed: {},
     editingSiteId: null,
-    opencodeStarted: false
+    opencodeStarted: false,
+    memoRoot: "",
+    memoPath: "",
+    memoLoaded: "",
+    memoDefault: "",
+    memoEntries: [],
+    memoCollapsed: {},
+    memoDirty: false
   };
 
   var el = {};
@@ -1181,7 +1188,7 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* メモ / ターミナル                                                    */
+  /* メモ (ファイルエクスプローラー)                                      */
   /* ------------------------------------------------------------------ */
   var terminalPanel = null;
 
@@ -1189,24 +1196,211 @@
     togglePane("memo", force);
   }
 
+  /* メモディレクトリ内の絶対パス */
+  function memoAbsolute(path) {
+    var root = (state.memoRoot || "").replace(/\/+$/, "");
+    if (!path) {
+      return root;
+    }
+    return root + "/" + path;
+  }
+
+  function parentDir(path) {
+    if (!path) {
+      return "";
+    }
+    var index = path.lastIndexOf("/");
+    return index < 0 ? "" : path.slice(0, index);
+  }
+
   function loadMemo() {
-    api("/api/memo")
+    return api("/api/memo/tree")
       .then(function (payload) {
-        el.memoText.value = payload.content || "";
-        el.memoPath.textContent = payload.path;
-        el.memoStatus.textContent = payload.exists ? "読み込みました" : "新規メモです";
+        state.memoRoot = payload.root || "";
+        state.memoDefault = payload.memoFile || "";
+        state.memoEntries = payload.tree || [];
+        renderMemoTree(state.memoEntries);
+        var target = state.memoPath || state.memoDefault;
+        if (!target) {
+          return null;
+        }
+        if (state.memoLoaded === target) {
+          // 読み込み済み (未保存の変更を保持する)
+          el.memoPath.textContent = memoAbsolute(target);
+          return null;
+        }
+        return openMemoFile(target);
       })
       .catch(function (error) {
+        el.memoTree.innerHTML = '<div class="tree-empty">' + escapeHtml(error.message) + "</div>";
         el.memoStatus.textContent = "メモの読み込みに失敗しました: " + error.message;
       });
   }
 
-  function saveMemo() {
-    busy(el.btnMemoSave, true);
-    api("/api/memo", { method: "PUT", body: { content: el.memoText.value } })
+  function refreshMemoTree() {
+    return api("/api/memo/tree")
       .then(function (payload) {
+        state.memoRoot = payload.root || "";
+        state.memoDefault = payload.memoFile || state.memoDefault;
+        state.memoEntries = payload.tree || [];
+        renderMemoTree(state.memoEntries);
+      })
+      .catch(function (error) {
+        toast("メモ一覧の更新に失敗しました: " + error.message, "error");
+      });
+  }
+
+  function renderMemoTree(entries) {
+    el.memoTree.innerHTML = "";
+    el.memoPath.textContent = memoAbsolute(state.memoPath);
+
+    // ルート (メモディレクトリ)
+    var rootRow = document.createElement("div");
+    rootRow.className = "tree-row is-dir is-root";
+    rootRow.title = state.memoRoot;
+    var rootIcon = document.createElement("span");
+    rootIcon.className = "tree-icon";
+    rootIcon.textContent = "▾";
+    rootRow.appendChild(rootIcon);
+    var rootName = document.createElement("span");
+    rootName.className = "tree-name is-dir";
+    rootName.textContent = state.memoRoot.split("/").filter(Boolean).pop() || "メモ";
+    rootRow.appendChild(rootName);
+    rootRow.addEventListener("contextmenu", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      showMemoMenu(event.clientX, event.clientY, { type: "dir", path: "", dir: "" });
+    });
+    el.memoTree.appendChild(rootRow);
+
+    if (!entries.length) {
+      var empty = document.createElement("div");
+      empty.className = "tree-empty";
+      empty.textContent = "メモディレクトリは空です。右クリックでファイルを作成できます。";
+      el.memoTree.appendChild(empty);
+      return;
+    }
+
+    entries.forEach(function (entry) {
+      if (memoIsHidden(entry.path)) {
+        return;
+      }
+      el.memoTree.appendChild(memoTreeRow(entry));
+    });
+  }
+
+  function memoTreeRow(entry) {
+    var depth = entry.path.split("/").length - 1;
+    var row = document.createElement("div");
+    row.className = "tree-row" + (entry.type === "dir" ? " is-dir" : "");
+    row.style.paddingLeft = 8 + depth * 14 + "px";
+    row.title = memoAbsolute(entry.path);
+
+    var icon = document.createElement("span");
+    icon.className = "tree-icon";
+    icon.textContent = entry.type === "dir" ? (state.memoCollapsed[entry.path] ? "▸" : "▾") : "▪";
+    row.appendChild(icon);
+
+    var name = document.createElement("span");
+    name.className = "tree-name" + (entry.type === "dir" ? " is-dir" : "");
+    name.textContent = entry.name;
+    row.appendChild(name);
+
+    if (entry.type === "file") {
+      var size = document.createElement("span");
+      size.className = "tree-icon";
+      size.style.marginLeft = "auto";
+      size.style.fontSize = "11px";
+      size.textContent = formatBytes(entry.size);
+      row.appendChild(size);
+      row.addEventListener("click", function () {
+        openMemoFile(entry.path);
+      });
+    } else {
+      row.addEventListener("click", function () {
+        state.memoCollapsed[entry.path] = !state.memoCollapsed[entry.path];
+        refreshMemoTree();
+      });
+    }
+    if (entry.path === state.memoPath) {
+      row.classList.add("is-active");
+    }
+    row.addEventListener("contextmenu", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      showMemoMenu(event.clientX, event.clientY, {
+        type: entry.type,
+        path: entry.path,
+        dir: entry.type === "file" ? parentDir(entry.path) : entry.path
+      });
+    });
+    return row;
+  }
+
+  function memoIsHidden(path) {
+    var parts = path.split("/");
+    for (var index = 1; index < parts.length; index += 1) {
+      if (state.memoCollapsed[parts.slice(0, index).join("/")]) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /* イベントの対象がツリーの行かどうか (行側のメニューと重複させないため) */
+  function isMemoTreeRow(node) {
+    while (node && node !== el.memoTree) {
+      if (node.classList && node.classList.contains("tree-row")) {
+        return true;
+      }
+      node = node.parentNode;
+    }
+    return false;
+  }
+
+  /* 展開中のフォルダをすべて折りたたむ */
+  function collapseMemoTree() {
+    (state.memoEntries || []).forEach(function (entry) {
+      if (entry.type === "dir") {
+        state.memoCollapsed[entry.path] = true;
+      }
+    });
+    renderMemoTree(state.memoEntries || []);
+  }
+
+  function openMemoFile(path) {
+    return api("/api/memo/file?path=" + encodeURIComponent(path))
+      .then(function (payload) {
+        state.memoPath = path;
+        state.memoLoaded = path;
+        state.memoDirty = false;
+        el.memoText.value = payload.content || "";
+        el.memoPath.textContent = memoAbsolute(path);
+        el.memoStatus.textContent = path + " (" + formatBytes(payload.size) + ") を読み込みました";
+        renderMemoTree(state.memoEntries || []);
+        return payload;
+      })
+      .catch(function (error) {
+        toast("メモを開けませんでした: " + error.message, "error");
+      });
+  }
+
+  function saveMemo() {
+    var path = state.memoPath || state.memoDefault;
+    if (!path) {
+      toast("保存するメモファイルを選択してください。", "warn");
+      return;
+    }
+    busy(el.btnMemoSave, true);
+    api("/api/memo/file", { method: "PUT", body: { path: path, content: el.memoText.value } })
+      .then(function (payload) {
+        state.memoPath = payload.path;
+        state.memoLoaded = payload.path;
+        state.memoDirty = false;
+        el.memoPath.textContent = memoAbsolute(payload.path);
         el.memoStatus.textContent = "保存しました: " + payload.path;
         toast("メモを保存しました: " + payload.path, "success");
+        refreshMemoTree();
       })
       .catch(function (error) {
         el.memoStatus.textContent = "保存に失敗しました: " + error.message;
@@ -1215,6 +1409,290 @@
       .finally(function () {
         busy(el.btnMemoSave, false);
       });
+  }
+
+  /* 右クリックメニュー (selfcode のサイドバーと同じ構成) */
+  var contextMenuEl = null;
+
+  function showMemoMenu(x, y, target) {
+    var items = [];
+    var isRoot = !target.path;
+    if (target.type === "file") {
+      items.push({ label: "開く", act: function () { openMemoFile(target.path); } });
+      items.push({ label: "ここで opencode", act: function () { openOpencodeAt(target.dir); } });
+      items.push({ label: "パスをコピー", act: function () { copyMemoPath(target.path); } });
+      items.push({ sep: true });
+      items.push({ label: "アップロード", act: function () { uploadMemoFiles(target.dir); } });
+      items.push({ label: "ダウンロード", act: function () { downloadMemo(target.path); } });
+      if (!isRoot) {
+        items.push({ label: "リネーム", act: function () { renameMemo(target.path); } });
+      }
+      items.push({ label: "削除", act: function () { deleteMemo(target.path); }, danger: true });
+    } else {
+      items.push({ label: "ファイル作成", act: function () { createMemoFile(target.path); } });
+      items.push({ label: "フォルダ作成", act: function () { createMemoFolder(target.path); } });
+      items.push({ sep: true });
+      items.push({ label: "ここで opencode", act: function () { openOpencodeAt(target.path); } });
+      items.push({ label: "パスをコピー", act: function () { copyMemoPath(target.path); } });
+      items.push({ sep: true });
+      items.push({ label: "アップロード", act: function () { uploadMemoFiles(target.path); } });
+      items.push({ label: "ダウンロード (ZIP)", act: function () { downloadMemo(target.path); } });
+      if (!isRoot) {
+        items.push({ label: "リネーム", act: function () { renameMemo(target.path); } });
+        items.push({ label: "削除", act: function () { deleteMemo(target.path); }, danger: true });
+      }
+    }
+    showContextMenu(x, y, items);
+  }
+
+  function showContextMenu(x, y, items) {
+    var menu = contextMenu();
+    menu.innerHTML = "";
+    items.forEach(function (item) {
+      if (item.sep) {
+        menu.appendChild(document.createElement("hr"));
+        return;
+      }
+      var button = document.createElement("button");
+      button.type = "button";
+      button.textContent = item.label;
+      if (item.danger) {
+        button.classList.add("danger");
+      }
+      button.addEventListener("click", function () {
+        closeContextMenu();
+        item.act();
+      });
+      menu.appendChild(button);
+    });
+    menu.style.display = "block";
+    menu.style.visibility = "hidden";
+    menu.style.left = "0px";
+    menu.style.top = "0px";
+
+    var rect = menu.getBoundingClientRect();
+    var pad = 8;
+    var posX = x;
+    var posY = y;
+    if (y + rect.height > window.innerHeight - pad) {
+      posY = Math.max(pad, y - rect.height);
+    }
+    if (posX + rect.width > window.innerWidth - pad) {
+      posX = Math.max(pad, window.innerWidth - rect.width - pad);
+    }
+    menu.style.left = posX + "px";
+    menu.style.top = posY + "px";
+    menu.style.visibility = "visible";
+    menu._close = function () {
+      closeContextMenu();
+    };
+    setTimeout(function () {
+      document.addEventListener("click", menu._close, { once: true });
+    }, 0);
+  }
+
+  function contextMenu() {
+    if (contextMenuEl) {
+      return contextMenuEl;
+    }
+    contextMenuEl = document.createElement("div");
+    contextMenuEl.id = "context-menu";
+    contextMenuEl.className = "context-menu";
+    document.body.appendChild(contextMenuEl);
+    return contextMenuEl;
+  }
+
+  function closeContextMenu() {
+    if (!contextMenuEl) {
+      return;
+    }
+    contextMenuEl.style.display = "none";
+    if (contextMenuEl._close) {
+      document.removeEventListener("click", contextMenuEl._close);
+      contextMenuEl._close = null;
+    }
+  }
+
+  function copyText(text) {
+    var fallback = function () {
+      return new Promise(function (resolve, reject) {
+        var area = document.createElement("textarea");
+        area.value = text;
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.focus();
+        area.select();
+        try {
+          if (document.execCommand("copy")) {
+            resolve();
+          } else {
+            reject(new Error("copy failed"));
+          }
+        } catch (error) {
+          reject(error);
+        } finally {
+          area.remove();
+        }
+      });
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).catch(fallback);
+    }
+    return fallback();
+  }
+
+  function copyMemoPath(path) {
+    var absolute = memoAbsolute(path);
+    copyText(absolute)
+      .then(function () {
+        toast("パスをコピーしました: " + absolute, "success");
+      })
+      .catch(function () {
+        toast("コピーに失敗しました", "error");
+      });
+  }
+
+  function createMemoFile(directory) {
+    var name = window.prompt("ファイル名", "memo.md");
+    if (!name) {
+      return;
+    }
+    var path = directory ? directory + "/" + name : name;
+    api("/api/memo/file", { method: "POST", body: { path: path, content: "" } })
+      .then(function (payload) {
+        toast("ファイルを作成しました: " + payload.path, "success");
+        return refreshMemoTree().then(function () {
+          return openMemoFile(payload.path);
+        });
+      })
+      .catch(function (error) {
+        toast("ファイルを作成できませんでした: " + error.message, "error");
+      });
+  }
+
+  function createMemoFolder(directory) {
+    var name = window.prompt("フォルダ名", "newfolder");
+    if (!name) {
+      return;
+    }
+    var path = directory ? directory + "/" + name : name;
+    api("/api/memo/folder", { method: "POST", body: { path: path } })
+      .then(function (payload) {
+        toast("フォルダを作成しました: " + payload.path, "success");
+        refreshMemoTree();
+      })
+      .catch(function (error) {
+        toast("フォルダを作成できませんでした: " + error.message, "error");
+      });
+  }
+
+  function renameMemo(path) {
+    var current = path.split("/").pop();
+    var name = window.prompt("新しい名前", current);
+    if (!name || name === current) {
+      return;
+    }
+    var directory = parentDir(path);
+    var to = directory ? directory + "/" + name : name;
+    api("/api/memo/rename", { method: "POST", body: { from: path, to: to } })
+      .then(function (payload) {
+        toast("名前を変更しました: " + payload.path, "success");
+        if (state.memoPath === path) {
+          state.memoPath = payload.path;
+          state.memoLoaded = payload.path;
+          el.memoPath.textContent = memoAbsolute(payload.path);
+        }
+        refreshMemoTree();
+      })
+      .catch(function (error) {
+        toast("名前を変更できませんでした: " + error.message, "error");
+      });
+  }
+
+  function deleteMemo(path) {
+    if (!window.confirm("「" + path + "」を削除しますか？")) {
+      return;
+    }
+    api("/api/memo/file", { method: "DELETE", body: { path: path } })
+      .then(function () {
+        toast("削除しました: " + path, "success");
+        if (state.memoPath === path || state.memoPath.indexOf(path + "/") === 0) {
+          state.memoPath = "";
+          state.memoLoaded = "";
+          el.memoText.value = "";
+          el.memoPath.textContent = memoAbsolute("");
+        }
+        refreshMemoTree();
+      })
+      .catch(function (error) {
+        toast("削除できませんでした: " + error.message, "error");
+      });
+  }
+
+  function downloadMemo(path) {
+    var link = document.createElement("a");
+    link.href = "/api/memo/download?path=" + encodeURIComponent(path || "");
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  function uploadMemoFiles(directory) {
+    var input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.addEventListener("change", function () {
+      var files = Array.prototype.slice.call(input.files || []);
+      if (!files.length) {
+        return;
+      }
+      var count = 0;
+      files
+        .reduce(function (chain, file) {
+          return chain.then(function () {
+            return fetch(
+              "/api/memo/upload?dir=" +
+                encodeURIComponent(directory || "") +
+                "&name=" +
+                encodeURIComponent(file.name),
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/octet-stream", "X-Requested-With": "htmledit" },
+                credentials: "same-origin",
+                body: file
+              }
+            )
+              .then(function (response) {
+                return response
+                  .json()
+                  .catch(function () {
+                    return {};
+                  })
+                  .then(function (payload) {
+                    if (!response.ok) {
+                      throw new Error(payload.error || "アップロードに失敗しました");
+                    }
+                    return payload;
+                  });
+              })
+              .then(function () {
+                count += 1;
+              })
+              .catch(function (error) {
+                toast(file.name + " のアップロードに失敗: " + error.message, "error");
+              });
+          });
+        }, Promise.resolve())
+        .then(function () {
+          if (count) {
+            toast(count + " 個のファイルをアップロードしました", "success");
+          }
+          refreshMemoTree();
+        });
+    });
+    input.click();
   }
 
   function openTerminal() {
@@ -1271,6 +1749,13 @@
     startOpencodeProcess();
   }
 
+  /* メモディレクトリ内のフォルダで opencode を起動する */
+  function openOpencodeAt(cwd) {
+    state.opencodeStarted = true;
+    el.terminalCwd.textContent = memoAbsolute(cwd);
+    togglePane("terminal", true, { siteId: "", command: "opencode", cwd: cwd });
+  }
+
   function installOpencode() {
     toast("opencode が未インストールのため、インストールを開始します", "warn");
     terminalPanel.write(
@@ -1322,7 +1807,7 @@
     memo: { pane: "memoPane", button: "btnToggleMemo", label: "メモパネル" }
   };
 
-  function togglePane(name, force) {
+  function togglePane(name, force, terminalOptions) {
     var config = PANELS[name];
     if (!config) {
       return;
@@ -1339,7 +1824,15 @@
     }
     if (name === "terminal" && !hidden && terminalPanel) {
       terminalPanel.show();
-      terminalPanel.connect(state.siteId);
+      if (terminalOptions) {
+        terminalPanel.connect(
+          terminalOptions.siteId || "",
+          terminalOptions.command || "",
+          terminalOptions.cwd === undefined ? null : terminalOptions.cwd
+        );
+      } else {
+        terminalPanel.connect(state.siteId);
+      }
     }
     if (name === "terminal" && hidden && terminalPanel) {
       terminalPanel.kill();
@@ -1385,6 +1878,16 @@
     });
     el.btnOpencode.addEventListener("click", openOpencode);
     el.btnMemoSave.addEventListener("click", saveMemo);
+    el.btnMemoCollapse.addEventListener("click", collapseMemoTree);
+    el.memoTree.addEventListener("contextmenu", function (event) {
+      // ツリーの余白を右クリックした場合はルート直下を対象にする
+      event.preventDefault();
+      if (isMemoTreeRow(event.target)) {
+        // 行側メニューで処理済み
+        return;
+      }
+      showMemoMenu(event.clientX, event.clientY, { type: "dir", path: "", dir: "" });
+    });
     el.btnMemoClose.addEventListener("click", function () {
       toggleMemo(false);
     });
@@ -1420,6 +1923,16 @@
         saveMemo();
       }
     });
+    el.memoText.addEventListener("input", function () {
+      state.memoDirty = true;
+      el.memoStatus.textContent = "未保存の変更があります";
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") {
+        closeContextMenu();
+      }
+    });
+    window.addEventListener("resize", closeContextMenu);
     el.btnPreview.addEventListener("click", function () {
       var visible = editor.togglePreview();
       el.btnPreview.classList.toggle("is-active", visible);
@@ -1493,7 +2006,9 @@
     el.memoText = $("memo-text");
     el.memoPath = $("memo-path");
     el.memoStatus = $("memo-status");
+    el.memoTree = $("memo-tree");
     el.btnMemoSave = $("btn-memo-save");
+    el.btnMemoCollapse = $("btn-memo-collapse");
     el.btnMemoClose = $("btn-memo-close");
     el.btnTerminalClose = $("btn-terminal-close");
     el.btnTerminalOpencode = $("btn-terminal-opencode");

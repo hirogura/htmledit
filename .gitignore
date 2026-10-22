@@ -23,6 +23,7 @@ backup/
 backups/
 data/
 uploads/
+memo/
 
 *.pem
 *.key

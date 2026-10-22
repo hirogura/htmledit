@@ -11,6 +11,7 @@ from pathlib import Path
 APP_ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = APP_ROOT / "static"
 DEFAULT_REPO_URL = "https://github.com/hirogura/htmledit.git"
+DEFAULT_MEMO_DIR = "/opt/lxd-data/htmledit-memo"
 
 _FALSE_VALUES = {"0", "false", "no", "off", ""}
 
@@ -62,13 +63,18 @@ class Config:
         self.commit_user_email = _env("HTMLEDIT_COMMIT_USER_EMAIL", "htmledit@localhost")
         self.allow_local_paths = _env_bool("HTMLEDIT_ALLOW_LOCAL_PATHS", True)
         self.git_timeout = _env_int("HTMLEDIT_GIT_TIMEOUT", 180)
-        self.memo_file = Path(_env("HTMLEDIT_MEMO_FILE", str(APP_ROOT / "memo" / "memo.md"))).expanduser()
+        self.memo_dir = Path(_env("HTMLEDIT_MEMO_DIR", DEFAULT_MEMO_DIR)).expanduser()
+        memo_file = _env("HTMLEDIT_MEMO_FILE")
+        self.memo_file = (
+            Path(memo_file).expanduser() if memo_file else self.memo_dir / "memo.md"
+        )
         self.max_file_size = _env_int("HTMLEDIT_MAX_FILE_SIZE", 8 * 1024 * 1024)
         return self
 
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.repos_dir.mkdir(parents=True, exist_ok=True)
+        self.memo_dir.mkdir(parents=True, exist_ok=True)
 
 
 CONFIG = Config()
