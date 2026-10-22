@@ -7,7 +7,6 @@
 
   function TerminalPanel(options) {
     this.host = options.host;
-    this.cwdLabel = options.cwdLabel;
     this.onStatus = options.onStatus || function () {};
     this.onOpenChange = options.onOpenChange || function () {};
     this.socket = null;

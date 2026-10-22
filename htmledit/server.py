@@ -352,4 +352,6 @@ def serve(host: str | None = None, port: int | None = None) -> None:
     try:
         server.serve_forever(poll_interval=0.5)
     finally:
+        # 起動中の opencode (PTY) をすべて終了する
+        terminal.TERMINALS.close_all()
         server.server_close()

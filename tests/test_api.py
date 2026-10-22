@@ -124,8 +124,8 @@ class ApiTestCase(unittest.TestCase):
     def test_version(self):
         status, payload = self.request("GET", "/api/version")
         self.assertEqual(status, 200)
-        self.assertEqual(payload["version"], "0.9.0")
-        self.assertEqual(payload["label"], "v.0.9.0")
+        self.assertEqual(payload["version"], "0.9.1")
+        self.assertEqual(payload["label"], "v.0.9.1")
 
     def test_site_lifecycle(self):
         status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})

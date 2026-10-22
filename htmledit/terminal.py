@@ -126,15 +126,44 @@ class TerminalSession:
         return os.read(self.master_fd, size)
 
     def close(self) -> None:
+        """セッションを閉じる (子プロセスも確実に終了する)."""
         self._alive = False
         try:
             os.close(self.master_fd)
         except OSError:
             pass
+        self._terminate()
+
+    def _terminate(self) -> None:
+        """子プロセスを SIGHUP -> SIGTERM -> SIGKILL の順で終了させる."""
+        process = self.process
+        if process.poll() is not None:
+            self._reap()
+            return
         try:
-            if self.process.poll() is None:
-                os.killpg(os.getpgid(self.process.pid), signal.SIGHUP)
+            group = os.getpgid(process.pid)
         except (OSError, ProcessLookupError):
+            group = None
+        for sig, wait in ((signal.SIGHUP, 1.0), (signal.SIGTERM, 2.0), (signal.SIGKILL, 1.0)):
+            try:
+                if group is not None:
+                    os.killpg(group, sig)
+                else:
+                    process.send_signal(sig)
+            except (OSError, ProcessLookupError):
+                break
+            try:
+                process.wait(timeout=wait)
+            except subprocess.TimeoutExpired:
+                continue
+            break
+        self._reap()
+
+    def _reap(self) -> None:
+        """終了済みの子プロセスを回収する (ゾンビ化を防ぐ)."""
+        try:
+            self.process.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
             pass
 
 

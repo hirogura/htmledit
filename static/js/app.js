@@ -278,9 +278,7 @@
     refreshTree();
     refreshGit();
     if (terminalPanel && el.terminalPane && !el.terminalPane.classList.contains("is-hidden")) {
-      terminalPanel.connect(siteId);
-      var site = currentSite();
-      el.terminalCwd.textContent = site ? site.url : "";
+      terminalPanel.connect(siteId, "opencode");
     }
   }
 
@@ -1553,10 +1551,9 @@
       });
   }
 
+  /* opencode パネルを開く (このパネルでは opencode のみを動かす) */
   function openTerminal() {
     togglePane("terminal", true);
-    var site = currentSite();
-    el.terminalCwd.textContent = site ? site.url : "";
   }
 
   /* opencode を PTY の子プロセスとして直接起動する (selfcode と同じ方式) */
@@ -1569,8 +1566,6 @@
     el.btnOpencode.classList.add("is-active");
     terminalPanel.show();
     terminalPanel.connect(state.siteId, "opencode");
-    var site = currentSite();
-    el.terminalCwd.textContent = site ? site.url : "";
   }
 
   /* ------------------------------------------------------------------ */
@@ -1590,14 +1585,6 @@
         toast("opencode の確認に失敗しました: " + error.message, "error");
       });
   }
-  function startOpencode() {
-    if (!terminalPanel) {
-      return;
-    }
-    state.opencodeStarted = true;
-    terminalPanel.write("\r\n\x1b[36m[htmledit] opencode を起動します...\x1b[0m\r\n");
-    terminalPanel.run("opencode");
-  }
 
   /* opencode のインストール完了後にターミナルで起動する */
   function startOpencodeAfterInstall() {
@@ -1610,7 +1597,6 @@
   /* サイト内のフォルダを作業ディレクトリに opencode を起動する */
   function openOpencodeAt(cwd) {
     state.opencodeStarted = true;
-    el.terminalCwd.textContent = siteAbsolute(cwd);
     togglePane("terminal", true, { siteId: state.siteId, command: "opencode", cwd: cwd });
   }
 
@@ -1688,13 +1674,19 @@
           terminalOptions.command || "",
           terminalOptions.cwd === undefined ? null : terminalOptions.cwd
         );
-      } else {
-        terminalPanel.connect(state.siteId);
       }
     }
     if (name === "terminal" && hidden && terminalPanel) {
+      // パネルを閉じたら opencode も終了する
+      state.opencodeStarted = false;
       terminalPanel.kill();
     }
+  }
+
+  /* opencode パネルを閉じる (opencode のプロセスも終了する) */
+  function closeTerminal() {
+    state.opencodeStarted = false;
+    togglePane("terminal", false);
   }
 
   /* ------------------------------------------------------------------ */
@@ -1750,29 +1742,8 @@
       toggleMemo(false);
     });
     el.btnTerminalClose.addEventListener("click", function () {
-      togglePane("terminal", false);
-    });
-    el.btnTerminalOpencode.addEventListener("click", function () {
-      api("/api/opencode/status")
-        .then(function (status) {
-          if (status.installed) {
-            startOpencodeProcess();
-          } else {
-            openTerminal();
-            installOpencode();
-          }
-        })
-        .catch(function (error) {
-          toast("opencode の確認に失敗しました: " + error.message, "error");
-        });
-    });
-    el.btnTerminalShell.addEventListener("click", function () {
-      state.opencodeStarted = false;
-      if (!terminalPanel) {
-        return;
-      }
-      terminalPanel.kill();
-      terminalPanel.connect(state.siteId, "");
+      // 閉じるボタンで opencode も終了させる
+      closeTerminal();
     });
     el.memoText.addEventListener("keydown", function (event) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
@@ -1864,10 +1835,6 @@
     el.btnMemoClose = $("btn-memo-close");
     el.btnFoldTree = $("btn-fold-tree");
     el.btnTerminalClose = $("btn-terminal-close");
-    el.btnTerminalOpencode = $("btn-terminal-opencode");
-    el.btnTerminalShell = $("btn-terminal-shell");
-    el.terminalCwd = $("terminal-cwd");
-    el.terminalStatus = $("terminal-status");
 
     editor = window.htmleditEditor.create({
       host: $("wysiwyg-host"),
@@ -1895,10 +1862,11 @@
     try {
       terminalPanel = window.htmleditTerminal.create({
         host: $("terminal"),
-        cwdLabel: $("terminal-cwd"),
         onStatus: function (message, kind) {
-          el.terminalStatus.textContent = message;
-          el.terminalStatus.className = "terminal-status" + (kind ? " is-" + kind : "");
+          // 状態表示はしない (エラーだけをトーストで知らせる)
+          if (kind === "error") {
+            toast(message, "error");
+          }
         }
       });
     } catch (error) {
