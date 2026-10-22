@@ -1,0 +1,23 @@
+# Cloudflare Tunnel (cloudflared) 設定例
+#
+# 1) Cloudflare ダッシュボードで Tunnels > Create a tunnel を作る
+# 2) 発行された credentials JSON を /etc/cloudflared/<TUNNEL_ID>.json に配置する
+# 3) 下記を /etc/cloudflared/config.yml として配置し、TUNNEL_ID を書き換える
+# 4) cloudflared を systemd で起動する (deploy/cloudflared.service を参照)
+#
+# 例: htmledit.example.com -> http://localhost:3372
+
+tunnel: 00000000-0000-0000-0000-000000000000
+credentials-file: /etc/cloudflared/00000000-0000-0000-0000-000000000000.json
+
+ingress:
+  - hostname: htmledit.example.com
+    service: http://127.0.0.1:3372
+    originRequest:
+      httpHostHeader: htmledit.example.com
+      connectTimeout: 30s
+  # 必要な場合のみ、警告無しに(service: http_status:404) を追加する
+  - service: http_status:404
+
+# ログをjournalへ出す場合
+no-autoupdate: true

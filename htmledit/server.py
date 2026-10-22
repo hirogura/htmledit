@@ -1,0 +1,201 @@
+"""HTTP サーバー本体."""
+
+from __future__ import annotations
+
+import base64
+import hmac
+import json
+import mimetypes
+import signal
+import socket
+import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
+
+from . import VERSION, api
+from .config import CONFIG, STATIC_DIR
+
+MAX_BODY = 16 * 1024 * 1024
+
+
+class HtmleditHandler(BaseHTTPRequestHandler):
+    server_version = f"htmledit/{VERSION}"
+    protocol_version = "HTTP/1.1"
+
+    # ------------------------------------------------------------------
+    # ユーティリティ
+    # ------------------------------------------------------------------
+    def log_message(self, fmt: str, *args) -> None:  # noqa: A003 - 標準 API
+        sys.stdout.write(f"[{self.log_date_time_string()}] {fmt % args}\n")
+        sys.stdout.flush()
+
+    def _send_bytes(self, status: int, body: bytes, content_type: str, extra: dict | None = None) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "same-origin")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        for key, value in (extra or {}).items():
+            self.send_header(key, value)
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _send_json(self, status: int, payload: object, extra: dict | None = None) -> None:
+        body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+        self._send_bytes(status, body, "application/json; charset=utf-8", extra)
+
+    def _send_error_page(self, status: int, message: str) -> None:
+        body = (
+            "<!doctype html><html lang='ja'><head><meta charset='utf-8'>"
+            f"<title>{status}</title></head><body style='font-family:system-ui;padding:2rem'>"
+            f"<h1>{status}</h1><p>{message}</p></body></html>"
+        ).encode("utf-8")
+        self._send_bytes(status, body, "text/html; charset=utf-8")
+
+    def _authorized(self) -> bool:
+        if not CONFIG.auth_user:
+            return True
+        header = self.headers.get("Authorization", "")
+        if not header.lower().startswith("basic "):
+            return False
+        try:
+            decoded = base64.b64decode(header.split(" ", 1)[1]).decode("utf-8")
+        except Exception:
+            return False
+        user, _, password = decoded.partition(":")
+        ok_user = hmac.compare_digest(user, CONFIG.auth_user)
+        ok_password = hmac.compare_digest(password, CONFIG.auth_password)
+        return ok_user and ok_password
+
+    def _read_body(self) -> bytes:
+        length = self.headers.get("Content-Length")
+        if not length:
+            return b""
+        try:
+            size = int(length)
+        except ValueError:
+            return b""
+        if size <= 0:
+            return b""
+        if size > MAX_BODY:
+            raise api.ApiError(413, "リクエストボディが大きすぎます。")
+        return self.rfile.read(size)
+
+    # ------------------------------------------------------------------
+    # リクエスト処理
+    # ------------------------------------------------------------------
+    def _handle(self, method: str) -> None:
+        split = urlsplit(self.path)
+        path = split.path
+        try:
+            if not self._authorized():
+                self._send_json(
+                    401,
+                    {"error": "認証が必要です。"},
+                    {"WWW-Authenticate": 'Basic realm="htmledit", charset="UTF-8"'},
+                )
+                return
+
+            if path.startswith("/api/"):
+                self._handle_api(method, path, split.query)
+                return
+
+            self._handle_static(method, path)
+        except api.ApiError as exc:
+            self._send_json(exc.status, {"error": exc.message, "detail": exc.detail})
+        except BrokenPipeError:  # pragma: no cover - クライアント切断
+            pass
+        except Exception as exc:  # pragma: no cover - 想定外
+            self.log_message("error: %s: %s", type(exc).__name__, exc)
+            self._send_json(500, {"error": f"サーバーエラー: {exc}"})
+
+    def _handle_api(self, method: str, path: str, query: str) -> None:
+        body = self._read_body()
+        request = api.Request(
+            method=method,
+            path=path,
+            query=parse_qs(query),
+            headers={key.lower(): value for key, value in self.headers.items()},
+            body=body,
+        )
+        result = api.dispatch(request)
+        self._send_json(200, result)
+
+    def _handle_static(self, method: str, path: str) -> None:
+        if method not in ("GET", "HEAD"):
+            self._send_error_page(405, "このVerbは使用できません。")
+            return
+        relative = "index.html" if path in ("/", "") else path.lstrip("/")
+        if relative.startswith("static/"):
+            relative = relative[len("static/") :]
+        target = (STATIC_DIR / relative).resolve()
+        try:
+            target.relative_to(STATIC_DIR.resolve())
+        except ValueError:
+            self._send_error_page(403, "アクセスが許可されていないパスです。")
+            return
+        if not target.is_file():
+            self._send_error_page(404, "ファイルが見つかりません。")
+            return
+        content_type, _ = mimetypes.guess_type(str(target))
+        if content_type is None:
+            content_type = "application/octet-stream"
+        if content_type.startswith("text/") or content_type in ("application/javascript", "application/json"):
+            content_type += "; charset=utf-8"
+        body = target.read_bytes()
+        cache = "no-cache" if target.suffix in (".html",) else "public, max-age=300"
+        self._send_bytes(200, body, content_type, {"Cache-Control": cache})
+
+    def do_GET(self) -> None:  # noqa: N802 - 標準 API
+        self._handle("GET")
+
+    def do_HEAD(self) -> None:  # noqa: N802
+        self._handle("HEAD")
+
+    def do_POST(self) -> None:  # noqa: N802
+        self._handle("POST")
+
+    def do_PUT(self) -> None:  # noqa: N802
+        self._handle("PUT")
+
+    def do_PATCH(self) -> None:  # noqa: N802
+        self._handle("PATCH")
+
+    def do_DELETE(self) -> None:  # noqa: N802
+        self._handle("DELETE")
+
+
+class HtmleditServer(ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+    address_family = socket.AF_INET
+
+
+def create_server(host: str | None = None, port: int | None = None) -> HtmleditServer:
+    CONFIG.ensure_dirs()
+    address = (host or CONFIG.host, port if port is not None else CONFIG.port)
+    return HtmleditServer(address, HtmleditHandler)
+
+
+def serve(host: str | None = None, port: int | None = None) -> None:
+    server = create_server(host, port)
+    bound_host, bound_port = server.server_address[:2]
+
+    def shutdown(_signum, _frame):  # pragma: no cover - シグナル処理
+        threading.Thread(target=server.shutdown, daemon=True).start()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, shutdown)
+        except ValueError:  # pragma: no cover - メインスレッド以外
+            pass
+
+    sys.stdout.write(f"htmledit v{VERSION} listening on http://{bound_host}:{bound_port}\n")
+    sys.stdout.flush()
+    try:
+        server.serve_forever(poll_interval=0.5)
+    finally:
+        server.server_close()

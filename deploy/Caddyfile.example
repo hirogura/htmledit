@@ -1,0 +1,24 @@
+# Caddy 設定例 (Cloudflare の DNS プロキシ + _origin certificate_ を使う場合)
+#
+# 1) Cloudflare ダッシュボードで SSL/TLS > Origin Server から origin certificate を作成
+# 2) 作成した証明書を /etc/caddy/origin-certs/ に配置
+# 3) このファイルを /etc/caddy/Caddyfile に追記して caddy を再起動
+#
+# cloudflared (Tunnel) を使う場合はこのファイルは不要。
+
+htmledit.example.com {
+	encode zstd gzip
+
+	tls /etc/caddy/origin-certs/htmledit.pem /etc/caddy/origin-certs/htmledit.key
+
+	reverse_proxy 127.0.0.1:3372 {
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+	}
+}

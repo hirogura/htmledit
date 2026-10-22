@@ -1,0 +1,17 @@
+[Unit]
+Description=Cloudflare Tunnel (cloudflared) for htmledit
+After=network-online.target htmledit.service
+Wants=network-online.target
+Requires=htmledit.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate run --config /etc/cloudflared/config.yml
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

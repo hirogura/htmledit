@@ -1,0 +1,38 @@
+# nginx 設定例 (Cloudflare の DNS プロキシ + origin certificate を使う場合)
+#
+# 1) Cloudflare ダッシュボードで SSL/TLS > Origin Server から origin certificate を作成
+# 2) 作成した証明書を /etc/ssl/cloudflare/ に配置
+# 3) この内容を /etc/nginx/sites-available/htmledit に配置して有効化する
+#
+# cloudflared (Tunnel) を使う場合はこのファイルは不要。
+
+server {
+    listen 80;
+    server_name htmledit.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name htmledit.example.com;
+
+    ssl_certificate     /etc/ssl/cloudflare/htmledit.pem;
+    ssl_certificate_key /etc/ssl/cloudflare/htmledit.key;
+
+    # Cloudflare からのリクエストのみ許可する場合 (必要に応じて)
+    # set_real_ip_from 173.245.48.0/20;
+    # real_ip_header CF-Connecting-IP;
+
+    client_max_body_size 32m;
+
+    location / {
+        proxy_pass http://127.0.0.1:3372;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+}

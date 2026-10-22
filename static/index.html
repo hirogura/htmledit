@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>htmledit</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232f6feb'/%3E%3Ctext x='16' y='22' font-size='16' font-family='monospace' fill='white' text-anchor='middle'%3E%3C/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/static/css/app.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">&lt;/&gt;</span>
+        <span class="brand-name">htmledit</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.0.1.0</span>
+      </div>
+      <div class="topbar-meta" id="topbar-meta"></div>
+      <div class="topbar-actions">
+        <a class="topbar-link" id="public-link" target="_blank" rel="noreferrer noopener" hidden>公開URL</a>
+        <button type="button" class="btn" id="btn-update" title="htmledit 自身を GitHub から更新する">アップデート</button>
+        <button type="button" class="btn" id="btn-restart" title="htmledit サービスを再起動する">再起動</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="pane sidebar">
+        <div class="pane-head">
+          <h2 class="pane-title">サイト</h2>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-add-site">+ 追加</button>
+        </div>
+        <ul class="site-list" id="site-list"></ul>
+        <div class="pane-head pane-head-sub">
+          <h2 class="pane-title" id="tree-title">ファイル</h2>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-refresh-tree" title="一覧を再読み込み">更新</button>
+        </div>
+        <div class="tree" id="file-tree"></div>
+      </aside>
+
+      <section class="pane editor-pane">
+        <div class="pane-head editor-head">
+          <div class="editor-title">
+            <span id="current-file" class="current-file">ファイルが選択されていません</span>
+            <span id="dirty-flag" class="dirty-flag" hidden>未保存</span>
+          </div>
+          <div class="editor-actions">
+            <div class="seg" role="tablist" aria-label="表示モード">
+              <button type="button" class="seg-btn is-active" data-mode="wysiwyg" role="tab">WYSIWYG</button>
+              <button type="button" class="seg-btn" data-mode="source" role="tab">ソース</button>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-preview" title="ページをプレビュー表示">プレビュー</button>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-save" title="ファイルを保存 (Ctrl+S)">保存</button>
+          </div>
+        </div>
+        <div class="toolbar" id="toolbar"></div>
+        <div class="editor-body">
+          <div class="editor-canvas">
+            <div id="wysiwyg-host" class="wysiwyg-host" contenteditable="true" spellcheck="false"></div>
+            <textarea id="source-host" class="source-host" spellcheck="false" wrap="off" hidden></textarea>
+          </div>
+          <iframe id="preview-frame" class="preview-frame" title="プレビュー" hidden></iframe>
+        </div>
+        <div class="statusbar" id="editor-status">準備完了</div>
+      </section>
+
+      <aside class="pane git-pane">
+        <div class="pane-head">
+          <h2 class="pane-title">GitHub</h2>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-refresh-git" title="状態を再読み込み">更新</button>
+        </div>
+        <div class="git-scroll">
+          <section class="card" id="repo-card">
+            <h3 class="card-title">リポジトリ</h3>
+            <dl class="kv" id="repo-info"></dl>
+            <dl class="kv kv-sub" id="github-info"></dl>
+          </section>
+
+          <section class="card">
+            <h3 class="card-title">操作</h3>
+            <div class="btn-row">
+              <button type="button" class="btn btn-sm" id="btn-pull">プル</button>
+              <button type="button" class="btn btn-sm" id="btn-push">プッシュ</button>
+            </div>
+            <label class="field">
+              <span class="field-label">コミットメッセージ</span>
+              <textarea id="commit-message" class="input" rows="3" placeholder="変更内容を入力"></textarea>
+            </label>
+            <button type="button" class="btn btn-primary btn-block" id="btn-commit">コミット</button>
+          </section>
+
+          <section class="card">
+            <h3 class="card-title">変更ファイル</h3>
+            <ul class="change-list" id="change-list"></ul>
+          </section>
+
+          <section class="card">
+            <h3 class="card-title">コミット履歴</h3>
+            <ul class="commit-list" id="commit-list"></ul>
+          </section>
+        </div>
+      </aside>
+    </main>
+
+    <dialog class="dialog" id="site-dialog">
+      <form method="dialog" class="dialog-form" id="site-form">
+        <h2 class="dialog-title">サイトを追加</h2>
+        <label class="field">
+          <span class="field-label">GitHub の URL</span>
+          <input class="input" type="text" id="site-url" placeholder="https://github.com/owner/repo" required />
+        </label>
+        <label class="field">
+          <span class="field-label">ブランチ (任意)</span>
+          <input class="input" type="text" id="site-branch" placeholder="main" />
+        </label>
+        <label class="field">
+          <span class="field-label">表示名 (任意)</span>
+          <input class="input" type="text" id="site-name" placeholder="owner/repo" />
+        </label>
+        <p class="dialog-error" id="site-error" hidden></p>
+        <div class="dialog-actions">
+          <button type="button" class="btn" id="btn-site-cancel">キャンセル</button>
+          <button type="button" class="btn btn-primary" id="btn-site-submit">追加する</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="/static/js/editor.js"></script>
+    <script src="/static/js/app.js"></script>
+  </body>
+</html>
