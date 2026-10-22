@@ -247,16 +247,34 @@ def save_site_file(request: Request, params: dict) -> dict:
 
 @route("POST", r"/api/sites/(?P<site_id>[^/]+)/assets")
 def copy_asset(request: Request, params: dict) -> dict:
-    """サイドバーからドロップした画像などをリポジトリ内へ取り込む."""
+    """サイドバーからドロップした画像などを日付付きフォルダへ取り込む."""
     site = _site(params["site_id"])
     payload = request.json()
     source = str(payload.get("source", "")).strip()
     target = str(payload.get("target", "")).strip()
     page = str(payload.get("page", "")).strip()
-    if not source or not target:
-        raise ApiError(400, "source と target を指定してください。")
+    if not source:
+        raise ApiError(400, "source を指定してください。")
     try:
-        result = sites.copy_asset(site, source, target, page=page)
+        result = sites.copy_asset(site, source, target=target, page=page)
+    except SiteError as exc:
+        raise ApiError(400, str(exc)) from exc
+    return {"ok": True, **result}
+
+
+@route("POST", r"/api/sites/(?P<site_id>[^/]+)/assets/upload")
+def upload_asset(request: Request, params: dict) -> dict:
+    """ローカルからドロップされた画像をアップロードし、日付付きフォルダへ保存する."""
+    site = _site(params["site_id"])
+    name = request.q("name", "")
+    page = request.q("page", "")
+    content_type = request.header("content-type", "")
+    if content_type and not content_type.startswith("image/"):
+        raise ApiError(400, "画像ファイルのみアップロードできます。")
+    if len(request.body) > CONFIG.max_file_size:
+        raise ApiError(413, "画像ファイルが大きすぎます。")
+    try:
+        result = sites.save_upload(site, name, request.body, page=page)
     except SiteError as exc:
         raise ApiError(400, str(exc)) from exc
     return {"ok": True, **result}

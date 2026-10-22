@@ -96,16 +96,6 @@ body {
   gap: 8px;
 }
 
-.topbar-link {
-  color: #6ea8ff;
-  text-decoration: none;
-  font-size: 12px;
-}
-
-.topbar-link:hover {
-  text-decoration: underline;
-}
-
 /* ------------------------------------------------------------------ */
 /* レイアウト                                                          */
 /* ------------------------------------------------------------------ */

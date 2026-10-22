@@ -5,7 +5,7 @@
 #
 # - htmledit は 127.0.0.1:3372 でのみ待ち受ける
 # - tailscale serve が tailnet 内に HTTPS (443) で公開する
-# - 公開 URL は HTMLEDIT_PUBLIC_URL に設定される
+# - 公開 URL を表示する
 set -euo pipefail
 
 ENV_FILE="${HTMLEDIT_ENV_FILE:-/etc/htmledit/htmledit.env}"
@@ -44,21 +44,11 @@ tailscale serve --bg --https="${PORT}" "http://${HOST}:${PORT}"
 # 443 で公開されていた場合は閉じる
 tailscale serve --https=443 off >/dev/null 2>&1 || true
 
-# 3) 公開 URL を環境変数に設定する (トップバーの「公開URL」リンク用)
+# 3) 公開 URL を表示する
 PUBLIC_URL="$(tailscale status --json 2>/dev/null | python3 -c 'import json,sys; print((json.load(sys.stdin).get("Self") or {}).get("DNSName","").rstrip("."))' 2>/dev/null || true)"
 if [ -n "${PUBLIC_URL}" ]; then
-  URL="https://${PUBLIC_URL}:${PORT}/"
-  if [ -f "${ENV_FILE}" ]; then
-    if grep -q "^HTMLEDIT_PUBLIC_URL=" "${ENV_FILE}"; then
-      sed -i "s|^HTMLEDIT_PUBLIC_URL=.*|HTMLEDIT_PUBLIC_URL=${URL}|" "${ENV_FILE}"
-    else
-      printf 'HTMLEDIT_PUBLIC_URL=%s\n' "${URL}" >> "${ENV_FILE}"
-    fi
-    systemctl restart "${SERVICE}.service"
-    echo "==> HTMLEDIT_PUBLIC_URL を ${URL} に設定しました"
-  fi
   echo ""
-  echo "公開 URL: ${URL}"
+  echo "公開 URL: https://${PUBLIC_URL}:${PORT}/"
 else
   echo ""
   echo "公開 URL: tailscale serve status で確認してください"

@@ -104,10 +104,6 @@
         state.version = payload;
         el.appVersion.textContent = payload.label || "v" + payload.version;
         el.appVersion.title = "バージョン " + (payload.label || payload.version);
-        if (payload.publicUrl) {
-          el.publicLink.href = payload.publicUrl;
-          el.publicLink.hidden = false;
-        }
         var repo = payload.repository || {};
         var parts = [];
         if (repo.branch) {
@@ -1073,10 +1069,9 @@
       return;
     }
     var name = baseName(path);
-    var target = "images/" + name;
     api("/api/sites/" + encodeURIComponent(state.siteId) + "/assets", {
       method: "POST",
-      body: { source: path, target: target, page: state.path || "" }
+      body: { source: path, page: state.path || "" }
     })
       .then(function (payload) {
         editor.insertImage(payload.reference, name);
@@ -1089,6 +1084,50 @@
           window.console.error(error);
         }
       });
+  }
+
+  function uploadImage(file) {
+    if (!state.siteId) {
+      toast("先にサイトを追加してください。", "warn");
+      return;
+    }
+    if (!file.type || file.type.indexOf("image/") !== 0) {
+      toast("画像ファイルのみドロップできます: " + file.name, "warn");
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function () {
+      var query =
+        "?name=" + encodeURIComponent(file.name) + "&page=" + encodeURIComponent(state.path || "");
+      fetch("/api/sites/" + encodeURIComponent(state.siteId) + "/assets/upload" + query, {
+        method: "POST",
+        headers: { "Content-Type": file.type, "X-Requested-With": "htmledit" },
+        credentials: "same-origin",
+        body: new Uint8Array(reader.result)
+      })
+        .then(function (response) {
+          return response.json().catch(function () {
+            return {};
+          }).then(function (payload) {
+            if (!response.ok) {
+              throw new Error(payload.error || "アップロードに失敗しました");
+            }
+            return payload;
+          });
+        })
+        .then(function (payload) {
+          editor.insertImage(payload.reference, file.name);
+          toast("画像を保存しました: " + payload.path, "success");
+          refreshTree();
+        })
+        .catch(function (error) {
+          toast("画像のアップロードに失敗しました: " + error.message, "error");
+        });
+    };
+    reader.onerror = function () {
+      toast("画像を読み込めませんでした: " + file.name, "error");
+    };
+    reader.readAsArrayBuffer(file);
   }
 
   /* ------------------------------------------------------------------ */
@@ -1146,7 +1185,6 @@
   function init() {
     el.appVersion = $("app-version");
     el.topbarMeta = $("topbar-meta");
-    el.publicLink = $("public-link");
     el.btnUpdate = $("btn-update");
     el.btnRestart = $("btn-restart");
     el.siteList = $("site-list");
@@ -1200,8 +1238,8 @@
       onDropUnsupported: function (message) {
         toast(message, "warn");
       },
-      onImageEmbedded: function (name) {
-        toast("画像を埋め込みました: " + name, "success");
+      onUploadImage: function (file) {
+        uploadImage(file);
       }
     });
 

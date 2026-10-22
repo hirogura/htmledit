@@ -99,13 +99,23 @@ https://<tailnet のホスト名>:3372/    # tailscale serve 経由 (HTTPS)
 
 ### 画像のドラッグ＆ドロップ
 
-以下の 3 通りで画像を WYSIWYG に埋め込めます。
+以下の 3 通りで画像を WYSIWYG に埋め込めます。画像は Base64 (data URL) ではなく
+**リポジトリ内の日付付きフォルダ**に保存され、HTML からは相対パスで参照します。
 
-1. **ファイルツリーから**: 左ペインの画像ファイル (png / jpg / gif / webp / svg など) を中央ペインへドラッグ
-   - サーバー側でリポジトリ内の `images/` へコピーされ、HTML からの相対パスが挿入される
-   - 同名ファイルがある場合は `photo-1.png` のように連番になる
-2. **ローカルファイルから**: PC 上の画像ファイルを直接ドロップすると data URL として埋め込まれる
-3. **画像 URL から**: ブラウザ上の画像 URL をドロップすると `<img src="...">` として挿入される
+```
+images/2026/10/22/photo.png
+└── index.html からは <img src="images/2026/10/22/photo.png">
+```
+
+| 手順 | 動作 |
+| --- | --- |
+| ファイルツリーからドラッグ | サーバー側で `images/YYYY/MM/DD/` へコピーし、相対パスを挿入する |
+| ローカルファイルからドラッグ | ファイルをアップロードして `images/YYYY/MM/DD/` に保存し、相対パスを挿入する |
+| 画像 URL をドラッグ | `<img src="https://...">` として挿入する (外部画像は保存しない) |
+
+- フォルダは画像を取り込んだ日付 (サーバー時刻) で自動的に作成される
+- 同名ファイルがある場合は `photo-1.png` のように連番になる
+- アップロードされたファイル名は安全な名前に変換される (パスや記号を含む場合は置換)
 
 ## 認証情報 (ユーザーID / PAT)
 
@@ -129,7 +139,7 @@ SSH リモート (`git@github.com:...`) では SSH 鍵が使われます。
 
 | 表示 | 動作 |
 | --- | --- |
-| `v.0.3.0` | 実行中のバージョン |
+| `v.0.4.0` | 実行中のバージョン |
 | アップデート | `https://github.com/hirogura/htmledit.git` から `git fetch` + `git merge --ff-only` で自身を更新する |
 | 再起動 | `systemctl restart htmledit` でサービスを再起動する (systemd がない環境ではプロセスを再実行) |
 
@@ -149,8 +159,7 @@ sudo ./deploy/tailscale-serve.sh
 2. `tailscale serve` で 3372 番ポートのみを HTTPS で公開 (443 には公開しない)
    - `tailscale serve --bg --https=3372 http://127.0.0.1:3372`
    - `tailscale serve --https=443 off` (443 で公開されていた場合)
-3. 公開 URL (`https://<tailnet のホスト名>:3372/`) を `HTMLEDIT_PUBLIC_URL` に設定
-   (トップバーの「公開URL」リンクに表示)
+3. 公開 URL (`https://<tailnet のホスト名>:3372/`) を表示
 
 証明書は Tailscale が自動で Let's Encrypt の証明書を発行します。
 `tailscale serve status` で公開先を確認、`tailscale serve --https=443 off` で公開を停止します。
@@ -183,9 +192,9 @@ sudo systemctl enable --now cloudflared
 
 ### 方法 2: Cloudflare の DNS プロキシ + リバースプロキシ
 
-`deploy/Caddyfile.example` / `deploy/nginx.conf.example` をconfigureし、Cloudflare の
-origin certificate を設置します。どちらの構成でも、タイトルバーの「公開URL」リンクに
-公開アドレスを表示させる場合は `HTMLEDIT_PUBLIC_URL` を設定してください。
+`deploy/Caddyfile.example` / `deploy/nginx.conf.example` を設定し、Cloudflare の
+origin certificate を設置します。公開アドレスは `tailscale serve status` や
+Cloudflare のダッシュボードで確認してください。
 
 ### 公開時の注意
 
@@ -204,7 +213,6 @@ origin certificate を設置します。どちらの構成でも、タイトル�
 | `HTMLEDIT_DATA_DIR` | `/opt/htmledit/data` | サイト登録情報・認証情報と clone 先 |
 | `HTMLEDIT_REPO_URL` | `https://github.com/hirogura/htmledit.git` | アップデート時に取得するリポジトリ |
 | `GITHUB_TOKEN` | (空) | push / pull / GitHub API 用の Personal Access Token |
-| `HTMLEDIT_PUBLIC_URL` | (空) | トップバーに表示する公開 URL |
 | `HTMLEDIT_AUTH_USER` / `HTMLEDIT_AUTH_PASSWORD` | (空) | basic 認証 |
 | `HTMLEDIT_COMMIT_USER_NAME` / `HTMLEDIT_COMMIT_USER_EMAIL` | `htmledit` / `htmledit@localhost` | コミットの作者情報 |
 | `HTMLEDIT_SERVICE_NAME` | `htmledit` | 再起動時に操作する systemd ユニット名 |
@@ -247,7 +255,8 @@ htmledit/
 | DELETE | `/api/sites/{id}` | サイトの削除 |
 | GET | `/api/sites/{id}/tree` | ファイルツリー |
 | GET | `/api/sites/{id}/file?path=` | ファイル読み取り |
-| POST | `/api/sites/{id}/assets` | 画像などの取り込み (コピーと相対パスの生成) |
+| POST | `/api/sites/{id}/assets` | 画像などの取り込み (日付付きフォルダへコピー) |
+| POST | `/api/sites/{id}/assets/upload` | 画像のアップロード (日付付きフォルダへ保存) |
 | PUT | `/api/sites/{id}/file` | ファイル保存 |
 | GET | `/api/sites/{id}/git/status` | ブランチ / 変更内容 / ahead-behind |
 | GET | `/api/sites/{id}/git/log` | コミット履歴 |

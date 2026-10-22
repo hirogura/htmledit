@@ -91,11 +91,29 @@ class ApiTestCase(unittest.TestCase):
             except json.JSONDecodeError:
                 return exc.code, {"error": body}
 
+    def request_upload(self, path, data, content_type):
+        url = f"http://127.0.0.1:{self.port}{path}"
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": content_type, "X-Requested-With": "htmledit"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as response:
+                return response.status, json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8")
+            try:
+                return exc.code, json.loads(body)
+            except json.JSONDecodeError:
+                return exc.code, {"error": body}
+
     def test_version(self):
         status, payload = self.request("GET", "/api/version")
         self.assertEqual(status, 200)
-        self.assertEqual(payload["version"], "0.3.0")
-        self.assertEqual(payload["label"], "v.0.3.0")
+        self.assertEqual(payload["version"], "0.4.0")
+        self.assertEqual(payload["label"], "v.0.4.0")
 
     def test_site_lifecycle(self):
         status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
@@ -218,36 +236,78 @@ class ApiTestCase(unittest.TestCase):
         status, payload = self.request(
             "POST",
             f"/api/sites/{site_id}/assets",
-            {"source": "assets/photo.png", "target": "images/photo.png", "page": "index.html"},
+            {"source": "assets/photo.png", "page": "index.html"},
         )
         self.assertEqual(status, 200, payload)
-        self.assertEqual(payload["path"], "images/photo.png")
-        self.assertEqual(payload["reference"], "images/photo.png")
-        self.assertTrue((Path(CONFIG.data_dir) / "repos" / site_id / "images" / "photo.png").exists())
+        # images/YYYY/MM/DD/ 形式に保存される
+        self.assertRegex(payload["path"], r"^images/\d{4}/\d{2}/\d{2}/photo\.png$")
+        self.assertEqual(payload["reference"], payload["path"])
+        self.assertTrue(
+            (Path(CONFIG.data_dir) / "repos" / site_id / payload["path"]).exists()
+        )
 
         # 同名ファイルがある場合は連番になる
         status, payload = self.request(
             "POST",
             f"/api/sites/{site_id}/assets",
-            {"source": "assets/photo.png", "target": "images/photo.png", "page": "index.html"},
+            {"source": "assets/photo.png", "page": "index.html"},
         )
         self.assertEqual(status, 200, payload)
-        self.assertEqual(payload["path"], "images/photo-1.png")
+        self.assertRegex(payload["path"], r"^images/\d{4}/\d{2}/\d{2}/photo-1\.png$")
 
         # サブディレクトリのページからの相対パス
         status, payload = self.request(
             "POST",
             f"/api/sites/{site_id}/assets",
-            {"source": "assets/photo.png", "target": "images/photo.png", "page": "sub/page.html"},
+            {"source": "assets/photo.png", "page": "sub/page.html"},
         )
         self.assertEqual(status, 200, payload)
-        self.assertEqual(payload["reference"], "../images/photo-2.png")
+        self.assertRegex(payload["reference"], r"^\.\./images/\d{4}/\d{2}/\d{2}/photo-2\.png$")
 
-        # サイト外へのコピーは拒否される
+        # 存在しないファイルはエラー
         status, payload = self.request(
             "POST",
             f"/api/sites/{site_id}/assets",
-            {"source": "assets/photo.png", "target": "../escape.png", "page": "index.html"},
+            {"source": "assets/missing.png", "page": "index.html"},
+        )
+        self.assertEqual(status, 400)
+
+        self.request("DELETE", f"/api/sites/{site_id}", {})
+
+    def test_upload_asset(self):
+        status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
+        site_id = payload["site"]["id"]
+
+        png = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06"
+            b"\x00\x00\x00\x1f\x15\xc4\x89"
+        )
+        status, payload = self.request_upload(
+            f"/api/sites/{site_id}/assets/upload?name=photo.png&page=index.html",
+            png,
+            "image/png",
+        )
+        self.assertEqual(status, 200, payload)
+        self.assertRegex(payload["path"], r"^images/\d{4}/\d{2}/\d{2}/photo\.png$")
+        self.assertEqual(payload["reference"], payload["path"])
+        self.assertEqual(payload["size"], len(png))
+        saved = Path(CONFIG.data_dir) / "repos" / site_id / payload["path"]
+        self.assertTrue(saved.exists())
+        self.assertEqual(saved.read_bytes(), png)
+
+        # 危険なファイル名は安全な名前に変換される
+        status, payload = self.request_upload(
+            f"/api/sites/{site_id}/assets/upload?name=../../evil%20%3Cimg%3E.png",
+            png,
+            "image/png",
+        )
+        self.assertEqual(status, 200, payload)
+        self.assertNotIn("..", payload["path"])
+        self.assertRegex(payload["path"], r"^images/\d{4}/\d{2}/\d{2}/evil_img\.png$")
+
+        # 画像以外は拒否される
+        status, payload = self.request_upload(
+            f"/api/sites/{site_id}/assets/upload?name=x.txt", b"hello", "text/plain"
         )
         self.assertEqual(status, 400)
 

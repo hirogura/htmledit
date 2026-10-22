@@ -89,7 +89,7 @@
     this.onSelection = options.onSelection || function () {};
     this.onDropSiteFile = options.onDropSiteFile || function () {};
     this.onDropUnsupported = options.onDropUnsupported || function () {};
-    this.onImageEmbedded = options.onImageEmbedded || function () {};
+    this.onUploadImage = options.onUploadImage || function () {};
 
     this.mode = "wysiwyg";
     this.path = "";
@@ -372,12 +372,13 @@
 
   Editor.prototype._readImageFile = function (file) {
     var self = this;
+    if (self.onUploadImage) {
+      self.onUploadImage(file);
+      return;
+    }
     var reader = new FileReader();
     reader.onload = function () {
       self.insertImage(reader.result, file.name);
-      if (self.onImageEmbedded) {
-        self.onImageEmbedded(file.name);
-      }
     };
     reader.onerror = function () {
       if (self.onDropUnsupported) {

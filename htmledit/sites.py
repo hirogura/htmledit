@@ -332,38 +332,84 @@ def is_html(path: str) -> bool:
     return Path(path).suffix.lower() in (".html", ".htm", ".xhtml")
 
 
-def copy_asset(site: Site, source: str, target: str, page: str = "") -> dict:
-    """サイト内の画像ファイルを別の場所へコピーし、HTML からの相対パスを返す."""
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif", ".bmp", ".ico"}
+
+
+def asset_dir(prefix: str = "images", when: float | None = None) -> str:
+    """画像を保存する日付付きフォルダ (例: images/2026/10/22)."""
+    stamp = time.localtime(when if when is not None else time.time())
+    return f"{prefix}/{stamp.tm_year:04d}/{stamp.tm_mon:02d}/{stamp.tm_mday:02d}"
+
+
+def sanitize_image_name(name: str) -> str:
+    """アップロードされたファイル名を安全な名前に変換する."""
+    base = os.path.basename((name or "").replace("\\", "/")).strip()
+    base = re.sub(r"[^A-Za-z0-9._-]+", "_", base)
+    stem, ext = os.path.splitext(base)
+    stem = re.sub(r"_{2,}", "_", stem).strip("_")
+    base = (stem or "image") + ext
+    if Path(base).suffix.lower() not in IMAGE_EXTENSIONS:
+        base += ".png"
+    return base
+
+
+def _unique_path(root: Path, relative: str) -> Path:
+    """同名が既にある場合は連番を付けたパス返す."""
+    target = root / relative
+    if not target.exists():
+        return target
+    stem, suffix = target.stem, target.suffix
+    index = 1
+    while target.exists():
+        target = target.with_name(f"{stem}-{index}{suffix}")
+        index += 1
+    return target
+
+
+def _reference(root: Path, target: Path, page: str) -> str:
+    """HTML ファイルからの相対パスを返す."""
+    target_rel = target.relative_to(root).as_posix()
+    if not page:
+        return target_rel
+    page_rel = page.strip().lstrip("/")
+    page_dir = os.path.dirname(page_rel) or "."
+    return os.path.relpath(target_rel, page_dir).replace(os.sep, "/")
+
+
+def copy_asset(site: Site, source: str, target: str = "", page: str = "") -> dict:
+    """サイト内の画像ファイルを日付付きフォルダへコピーし、HTML からの相対パスを返す."""
     source_path = resolve_path(site, source)
     if not source_path.is_file():
         raise SiteError(f"ファイルが見つかりません: {source}")
 
-    target_rel = (target or "").strip().lstrip("/")
-    if not target_rel:
-        raise SiteError("保存先を指定してください。")
-    target_path = resolve_path(site, target_rel)
     root = Path(os.path.realpath(site.path))
-    if root not in target_path.parents:
-        raise SiteError("サイト配下のパス以外には保存できません。")
-
-    if target_path.exists():
-        stem, suffix = target_path.stem, target_path.suffix
-        index = 1
-        while target_path.exists():
-            target_path = target_path.with_name(f"{stem}-{index}{suffix}")
-            index += 1
+    name = sanitize_image_name(os.path.basename(source_path.name))
+    folder = target.strip().lstrip("/") if target.strip() else asset_dir()
+    relative = f"{folder}/{name}"
+    target_path = _unique_path(root, relative)
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source_path, target_path)
-
-    target_rel = target_path.relative_to(root).as_posix()
-    reference = target_rel
-    if page:
-        page_rel = page.strip().lstrip("/")
-        page_dir = os.path.dirname(page_rel) or "."
-        reference = os.path.relpath(target_rel, page_dir).replace(os.sep, "/")
     return {
-        "path": target_rel,
-        "reference": reference,
+        "path": target_path.relative_to(root).as_posix(),
+        "reference": _reference(root, target_path, page),
         "size": target_path.stat().st_size,
+    }
+
+
+def save_upload(site: Site, filename: str, data: bytes, page: str = "") -> dict:
+    """アップロードされた画像バイト列を日付付きフォルダへ保存する."""
+    if not data:
+        raise SiteError("画像データが空です。")
+    root = Path(os.path.realpath(site.path))
+    name = sanitize_image_name(filename)
+    relative = f"{asset_dir()}/{name}"
+    target_path = _unique_path(root, relative)
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_bytes(data)
+    return {
+        "path": target_path.relative_to(root).as_posix(),
+        "reference": _reference(root, target_path, page),
+        "size": len(data),
     }
