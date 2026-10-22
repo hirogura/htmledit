@@ -1535,9 +1535,14 @@
       images.slice(0, visible).forEach(function (asset) {
         grid.appendChild(buildThumbnail(asset, image, controls));
       });
+      // 残りが無くなったらボタンを隠す (残数がマイナスにならないようにする)
       var rest = images.length - visible;
-      more.hidden = rest <= 0;
-      more.textContent = "続きを読み込む (残り " + rest + " 件)";
+      if (rest > 0) {
+        more.hidden = false;
+        more.textContent = "続きを読み込む (残り " + rest + " 件)";
+      } else {
+        more.hidden = true;
+      }
     };
 
     var failed = function (error) {
@@ -1560,7 +1565,7 @@
     };
 
     more.addEventListener("click", function () {
-      visible += GALLERY_PAGE_SIZE;
+      visible = Math.min(visible + GALLERY_PAGE_SIZE, images.length);
       paint();
     });
 
