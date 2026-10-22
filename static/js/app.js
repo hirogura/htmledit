@@ -1175,6 +1175,24 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* パネルの表示 / 非表示の切り替え                                      */
+  /* ------------------------------------------------------------------ */
+  function togglePane(name) {
+    var pane = name === "prop" ? el.propPane : el.gitPane;
+    var button = name === "prop" ? el.btnToggleProp : el.btnToggleGit;
+    var hidden = pane.classList.toggle("is-hidden");
+    if (name === "prop") {
+      el.workspace.classList.toggle("is-prop-hidden", hidden);
+    } else {
+      el.workspace.classList.toggle("is-git-hidden", hidden);
+    }
+    button.classList.toggle("is-active", !hidden);
+    button.setAttribute("aria-pressed", hidden ? "false" : "true");
+    button.title = (hidden ? "表示する" : "非表示にする") + " - " +
+      (name === "prop" ? "プロパティパネル" : "GitHub パネル");
+  }
+
+  /* ------------------------------------------------------------------ */
   /* 初期化                                                              */
   /* ------------------------------------------------------------------ */
   var editor = null;
@@ -1202,6 +1220,12 @@
     el.btnCommit.addEventListener("click", runCommit);
     el.btnUpdate.addEventListener("click", runUpdate);
     el.btnRestart.addEventListener("click", runRestart);
+    el.btnToggleProp.addEventListener("click", function () {
+      togglePane("prop");
+    });
+    el.btnToggleGit.addEventListener("click", function () {
+      togglePane("git");
+    });
     el.btnPreview.addEventListener("click", function () {
       var visible = editor.togglePreview();
       el.btnPreview.classList.toggle("is-active", visible);
@@ -1263,6 +1287,11 @@
     el.btnRefreshTree = $("btn-refresh-tree");
     el.btnRefreshGit = $("btn-refresh-git");
     el.btnClearSelection = $("btn-clear-selection");
+    el.btnToggleProp = $("btn-toggle-prop");
+    el.btnToggleGit = $("btn-toggle-git");
+    el.workspace = $("workspace");
+    el.propPane = $("prop-pane");
+    el.gitPane = $("git-pane");
 
     editor = window.htmleditEditor.create({
       host: $("wysiwyg-host"),

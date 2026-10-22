@@ -12,16 +12,18 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.0.4.1</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.0.5.0</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
+        <button type="button" class="btn btn-toggle is-active" id="btn-toggle-prop" title="プロパティパネルの表示 / 非表示を切り替える">プロパティ</button>
+        <button type="button" class="btn btn-toggle is-active" id="btn-toggle-git" title="GitHub パネルの表示 / 非表示を切り替える">GitHub</button>
         <button type="button" class="btn" id="btn-update" title="htmledit 自身を GitHub から更新する">アップデート</button>
         <button type="button" class="btn" id="btn-restart" title="htmledit サービスを再起動する">再起動</button>
       </div>
     </header>
 
-    <main class="workspace">
+    <main class="workspace" id="workspace">
       <aside class="pane sidebar">
         <div class="pane-head">
           <h2 class="pane-title">サイト</h2>
@@ -61,7 +63,7 @@
         <div class="statusbar" id="editor-status">準備完了</div>
       </section>
 
-      <aside class="pane prop-pane">
+      <aside class="pane prop-pane" id="prop-pane">
         <div class="pane-head">
           <h2 class="pane-title">プロパティ</h2>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-clear-selection" title="選択を解除">解除</button>
@@ -74,7 +76,7 @@
         </div>
       </aside>
 
-      <aside class="pane git-pane">
+      <aside class="pane git-pane" id="git-pane">
         <div class="pane-head">
           <h2 class="pane-title">GitHub</h2>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-refresh-git" title="状態を再読み込み">更新</button>

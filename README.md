@@ -103,14 +103,14 @@ https://<tailnet のホスト名>:3372/    # tailscale serve 経由 (HTTPS)
 **リポジトリ内の日付付きフォルダ**に保存され、HTML からは相対パスで参照します。
 
 ```
-images/2026/10/22/photo.png
-└── index.html からは <img src="images/2026/10/22/photo.png">
+public/images/2026/10/22/photo.png
+└── index.html からは <img src="public/images/2026/10/22/photo.png">
 ```
 
 | 手順 | 動作 |
 | --- | --- |
-| ファイルツリーからドラッグ | サーバー側で `images/YYYY/MM/DD/` へコピーし、相対パスを挿入する |
-| ローカルファイルからドラッグ | ファイルをアップロードして `images/YYYY/MM/DD/` に保存し、相対パスを挿入する |
+| ファイルツリーからドラッグ | サーバー側で `public/images/YYYY/MM/DD/` へコピーし、相対パスを挿入する |
+| ローカルファイルからドラッグ | ファイルをアップロードして `public/images/YYYY/MM/DD/` に保存し、相対パスを挿入する |
 | 画像 URL をドラッグ | `<img src="https://...">` として挿入する (外部画像は保存しない) |
 
 - フォルダは画像を取り込んだ日付 (サーバー時刻) で自動的に作成される
@@ -119,9 +119,9 @@ images/2026/10/22/photo.png
 
 画像を表示する仕組み:
 
-- 作成した画像はリポジトリ内の `images/YYYY/MM/DD/` に保存され、HTML からは
+- 作成した画像はリポジトリ内の `public/images/YYYY/MM/DD/` に保存され、HTML からは
   **そのページからの相対パス**で参照される (ルート直下の `index.html` なら
-  `images/2026/10/22/photo.png`、サブディレクトリのページなら `../images/...`)
+  `public/images/2026/10/22/photo.png`、サブディレクトリのページなら `../public/images/...`)
 - エディター (WYSIWYG / プレビュー) 内では相対 URL がそのままでは解決できないため、
   アプリがサイトのリポジトリを `/site/{サイトID}/` で配信し、エディター側の
   `<base>` をそこに向けることで画像を正しく表示する
@@ -144,15 +144,20 @@ images/2026/10/22/photo.png
 PAT を使うのは HTTPS リモート (`https://github.com/...`) の場合です。
 SSH リモート (`git@github.com:...`) では SSH 鍵が使われます。
 
-## タイトルバーのバージョン表示 / アップデート / 再起動
+## タイトルバーのボタン
 
 画面上部のタイトル表示の右隣に:
 
 | 表示 | 動作 |
 | --- | --- |
-| `v.0.4.1` | 実行中のバージョン |
+| `v.0.5.0` | 実行中のバージョン |
+| プロパティ | プロパティペイン (リンク / 画像の設定) の表示 / 非表示を切り替える |
+| GitHub | GitHub ペイン (リポジトリ情報と pull / commit / push) の表示 / 非表示を切り替える |
 | アップデート | `https://github.com/hirogura/htmledit.git` から `git fetch` + `git merge --ff-only` で自身を更新する |
 | 再起動 | `systemctl restart htmledit` でサービスを再起動する (systemd がない環境ではプロセスを再実行) |
+
+「プロパティ」「GitHub」ボタンは、表示中のパネルはアクセント色で示され、
+非表示にするとペインが閉じてエディターが広がる。
 
 アップデートの反映には再起動が必要です。アップデート完了後は「再起動」ボタンを押してください。
 

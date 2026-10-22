@@ -335,8 +335,8 @@ def is_html(path: str) -> bool:
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif", ".bmp", ".ico"}
 
 
-def asset_dir(prefix: str = "images", when: float | None = None) -> str:
-    """画像を保存する日付付きフォルダ (例: images/2026/10/22)."""
+def asset_dir(prefix: str = "public/images", when: float | None = None) -> str:
+    """画像を保存する日付付きフォルダ (例: public/images/2026/10/22)."""
     stamp = time.localtime(when if when is not None else time.time())
     return f"{prefix}/{stamp.tm_year:04d}/{stamp.tm_mon:02d}/{stamp.tm_mday:02d}"
 

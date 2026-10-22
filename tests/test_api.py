@@ -121,8 +121,8 @@ class ApiTestCase(unittest.TestCase):
     def test_version(self):
         status, payload = self.request("GET", "/api/version")
         self.assertEqual(status, 200)
-        self.assertEqual(payload["version"], "0.4.1")
-        self.assertEqual(payload["label"], "v.0.4.1")
+        self.assertEqual(payload["version"], "0.5.0")
+        self.assertEqual(payload["label"], "v.0.5.0")
 
     def test_site_lifecycle(self):
         status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
@@ -249,7 +249,7 @@ class ApiTestCase(unittest.TestCase):
         )
         self.assertEqual(status, 200, payload)
         # images/YYYY/MM/DD/ 形式に保存される
-        self.assertRegex(payload["path"], r"^images/\d{4}/\d{2}/\d{2}/photo\.png$")
+        self.assertRegex(payload["path"], r"^public/images/\d{4}/\d{2}/\d{2}/photo\.png$")
         self.assertEqual(payload["reference"], payload["path"])
         self.assertTrue(
             (Path(CONFIG.data_dir) / "repos" / site_id / payload["path"]).exists()
@@ -262,7 +262,7 @@ class ApiTestCase(unittest.TestCase):
             {"source": "assets/photo.png", "page": "index.html"},
         )
         self.assertEqual(status, 200, payload)
-        self.assertRegex(payload["path"], r"^images/\d{4}/\d{2}/\d{2}/photo-1\.png$")
+        self.assertRegex(payload["path"], r"^public/images/\d{4}/\d{2}/\d{2}/photo-1\.png$")
 
         # サブディレクトリのページからの相対パス
         status, payload = self.request(
@@ -271,7 +271,7 @@ class ApiTestCase(unittest.TestCase):
             {"source": "assets/photo.png", "page": "sub/page.html"},
         )
         self.assertEqual(status, 200, payload)
-        self.assertRegex(payload["reference"], r"^\.\./images/\d{4}/\d{2}/\d{2}/photo-2\.png$")
+        self.assertRegex(payload["reference"], r"^\.\./public/images/\d{4}/\d{2}/\d{2}/photo-2\.png$")
 
         # 存在しないファイルはエラー
         status, payload = self.request(
@@ -297,7 +297,7 @@ class ApiTestCase(unittest.TestCase):
             "image/png",
         )
         self.assertEqual(status, 200, payload)
-        self.assertRegex(payload["path"], r"^images/\d{4}/\d{2}/\d{2}/photo\.png$")
+        self.assertRegex(payload["path"], r"^public/images/\d{4}/\d{2}/\d{2}/photo\.png$")
         self.assertEqual(payload["reference"], payload["path"])
         self.assertEqual(payload["size"], len(png))
         saved = Path(CONFIG.data_dir) / "repos" / site_id / payload["path"]
@@ -312,7 +312,7 @@ class ApiTestCase(unittest.TestCase):
         )
         self.assertEqual(status, 200, payload)
         self.assertNotIn("..", payload["path"])
-        self.assertRegex(payload["path"], r"^images/\d{4}/\d{2}/\d{2}/evil_img\.png$")
+        self.assertRegex(payload["path"], r"^public/images/\d{4}/\d{2}/\d{2}/evil_img\.png$")
 
         # 画像以外は拒否される
         status, payload = self.request_upload(
