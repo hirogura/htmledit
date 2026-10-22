@@ -70,6 +70,14 @@
     return parts.prefix + parts.body + parts.suffix;
   }
 
+  function escapeAttribute(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
   function Editor(options) {
     this.host = options.host;
     this.source = options.source;
@@ -78,6 +86,10 @@
     this.status = options.status;
     this.onChange = options.onChange || function () {};
     this.onDirtyChange = options.onDirtyChange || function () {};
+    this.onSelection = options.onSelection || function () {};
+    this.onDropSiteFile = options.onDropSiteFile || function () {};
+    this.onDropUnsupported = options.onDropUnsupported || function () {};
+    this.onImageEmbedded = options.onImageEmbedded || function () {};
 
     this.mode = "wysiwyg";
     this.path = "";
@@ -86,6 +98,8 @@
     this.dirty = false;
     this.savedRange = null;
     this.previewVisible = false;
+    this.selectedImage = null;
+    this.selectedLink = null;
 
     this._buildToolbar();
     this._bind();
@@ -147,15 +161,230 @@
     });
     this.host.addEventListener("keyup", function () {
       self.saveSelection();
+      self.reportSelection();
     });
     this.host.addEventListener("mouseup", function () {
       self.saveSelection();
+      self.reportSelection();
+    });
+    this.host.addEventListener("click", function (event) {
+      var target = event.target;
+      var image = target && target.tagName === "IMG" ? target : null;
+      var link = self.closestElement(target, "A");
+      self.selectedImage = image;
+      self.selectedLink = link;
+      self.saveSelection();
+      if (image || link) {
+        self.emitSelection();
+      } else {
+        self.reportSelection();
+      }
     });
     document.addEventListener("selectionchange", function () {
       if (document.activeElement === self.host) {
         self.saveSelection();
+        self.reportSelection();
       }
     });
+    this._bindDrop();
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* 選択状態の判定                                                     */
+  /* ------------------------------------------------------------------ */
+  Editor.prototype.closestElement = function (element, tagName) {
+    var node = element;
+    while (node && node !== this.host) {
+      if (node.nodeType === 1 && node.tagName === tagName) {
+        return node;
+      }
+      node = node.parentNode;
+    }
+    return null;
+  };
+
+  Editor.prototype.reportSelection = function () {
+    if (this.mode !== "wysiwyg") {
+      this.emitSelection();
+      return;
+    }
+    var selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      this.emitSelection();
+      return;
+    }
+    var range = selection.getRangeAt(0);
+    if (!this.host.contains(range.commonAncestorContainer)) {
+      this.emitSelection();
+      return;
+    }
+
+    var node = range.startContainer;
+    var element = node.nodeType === 1 ? node : node.parentElement;
+    var image = this.selectedImage && this.host.contains(this.selectedImage) ? this.selectedImage : null;
+    var link = this.closestElement(element, "A");
+
+    if (!image) {
+      // キャレットが画像の直前/直後にある場合
+      if (element && element.previousElementSibling && element.previousElementSibling.tagName === "IMG") {
+        image = element.previousElementSibling;
+      } else if (element && element.tagName === "IMG") {
+        image = element;
+      } else if (node.nodeType === 1 && range.startOffset > 0) {
+        var child = element.childNodes[range.startOffset - 1];
+        if (child && child.tagName === "IMG") {
+          image = child;
+        }
+      }
+    }
+    if (image && !this.host.contains(image)) {
+      image = null;
+    }
+    if (!link && image) {
+      link = this.closestElement(image.parentElement, "A");
+    }
+    this.selectedImage = image;
+    this.selectedLink = link;
+    this.emitSelection();
+  };
+
+  Editor.prototype.emitSelection = function () {
+    var info = {
+      link: this.selectedLink || null,
+      image: this.selectedImage || null,
+      text: this.selectedText()
+    };
+    if (this.onSelection) {
+      this.onSelection(info);
+    }
+  };
+
+  Editor.prototype.selectedText = function () {
+    var selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      return "";
+    }
+    return selection.toString();
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* 画像の挿入 / ドラッグ＆ドロップ                                      */
+  /* ------------------------------------------------------------------ */
+  Editor.prototype.insertHtmlAtCaret = function (html) {
+    if (this.mode !== "wysiwyg") {
+      this.setMode("wysiwyg");
+    }
+    this.restoreSelection();
+    var inserted = false;
+    try {
+      if (document.queryCommandSupported && document.queryCommandSupported("insertHTML")) {
+        inserted = document.execCommand("insertHTML", false, html);
+      }
+    } catch (error) {
+      inserted = false;
+    }
+    if (!inserted) {
+      this._insertHtmlManually(html);
+    }
+    this._markDirty();
+    this.updatePreview();
+  };
+
+  Editor.prototype._insertHtmlManually = function (html) {
+    var selection = window.getSelection();
+    var range = null;
+    if (selection && selection.rangeCount > 0) {
+      var candidate = selection.getRangeAt(0);
+      // エディター外のカーソルには挿入しない
+      if (this.host.contains(candidate.commonAncestorContainer)) {
+        range = candidate;
+      }
+    }
+    if (!range) {
+      this.host.insertAdjacentHTML("beforeend", html);
+      return;
+    }
+    var container = range.startContainer;
+    var holder = document.createElement("div");
+    holder.innerHTML = html;
+    while (holder.firstChild) {
+      container.insertBefore(holder.firstChild, container.childNodes[range.startOffset] || null);
+    }
+  };
+
+  Editor.prototype.insertImage = function (src, alt) {
+    var attrs = ' src="' + escapeAttribute(src) + '"';
+    if (alt) {
+      attrs += ' alt="' + escapeAttribute(alt) + '"';
+    }
+    this.insertHtmlAtCaret("<img" + attrs + ">");
+  };
+
+  Editor.prototype._bindDrop = function () {
+    var self = this;
+    this.host.addEventListener("dragover", function (event) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      self.host.classList.add("is-drop-target");
+    });
+    this.host.addEventListener("dragleave", function () {
+      self.host.classList.remove("is-drop-target");
+    });
+    this.host.addEventListener("drop", function (event) {
+      event.preventDefault();
+      self.host.classList.remove("is-drop-target");
+      if (self.mode !== "wysiwyg") {
+        self.setMode("wysiwyg");
+      }
+      self.restoreSelection();
+
+      var transfer = event.dataTransfer;
+      var sitePath = transfer.getData("application/x-htmledit-path");
+      if (sitePath) {
+        if (self.onDropSiteFile) {
+          self.onDropSiteFile(sitePath);
+        }
+        return;
+      }
+      var files = transfer.files;
+      if (files && files.length) {
+        var file = files[0];
+        if (file.type && file.type.indexOf("image/") === 0) {
+          self._readImageFile(file);
+        } else if (self.onDropUnsupported) {
+          self.onDropUnsupported("画像ファイルのみドロップできます: " + file.name);
+        }
+        return;
+      }
+      var uri = transfer.getData("text/uri-list") || transfer.getData("text/plain");
+      if (uri) {
+        uri = uri.split("\n")[0].trim();
+        if (uri && !self._isLocalPath(uri)) {
+          self.insertImage(uri, "");
+        }
+      }
+    });
+  };
+
+  Editor.prototype._isLocalPath = function (value) {
+    return !/^(https?:)?\/\//i.test(value) && !/^data:/i.test(value);
+  };
+
+  Editor.prototype._readImageFile = function (file) {
+    var self = this;
+    var reader = new FileReader();
+    reader.onload = function () {
+      self.insertImage(reader.result, file.name);
+      if (self.onImageEmbedded) {
+        self.onImageEmbedded(file.name);
+      }
+    };
+    reader.onerror = function () {
+      if (self.onDropUnsupported) {
+        self.onDropUnsupported("画像を読み込めませんでした: " + file.name);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   Editor.prototype.saveSelection = function () {
@@ -239,7 +468,10 @@
     this.host.innerHTML = this.parts.body;
     this.source.value = this.original;
     this.dirty = false;
+    this.selectedImage = null;
+    this.selectedLink = null;
     this.onDirtyChange(false);
+    this.emitSelection();
     this.updatePreview();
   };
 
@@ -250,7 +482,10 @@
     this.host.innerHTML = "";
     this.source.value = "";
     this.dirty = false;
+    this.selectedImage = null;
+    this.selectedLink = null;
     this.onDirtyChange(false);
+    this.emitSelection();
     this.updatePreview();
   };
 
@@ -308,6 +543,11 @@
     }
   };
 
+  Editor.prototype.notifyChange = function () {
+    this._markDirty();
+    this.updatePreview();
+  };
+
   Editor.prototype.markSaved = function () {
     this.parts = this.currentParts();
     this.original = composeDocument(this.parts);
@@ -317,7 +557,10 @@
       this.host.innerHTML = this.parts.body;
     }
     this.dirty = false;
+    this.selectedImage = null;
+    this.selectedLink = null;
     this.onDirtyChange(false);
+    this.emitSelection();
   };
 
   Editor.prototype.setStatus = function (message) {

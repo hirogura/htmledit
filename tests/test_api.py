@@ -94,8 +94,8 @@ class ApiTestCase(unittest.TestCase):
     def test_version(self):
         status, payload = self.request("GET", "/api/version")
         self.assertEqual(status, 200)
-        self.assertEqual(payload["version"], "0.2.0")
-        self.assertEqual(payload["label"], "v.0.2.0")
+        self.assertEqual(payload["version"], "0.3.0")
+        self.assertEqual(payload["label"], "v.0.3.0")
 
     def test_site_lifecycle(self):
         status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
@@ -205,6 +205,53 @@ class ApiTestCase(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("username=octocat", result.stdout)
         self.assertIn("password=ghp_test_token", result.stdout)
+
+    def test_copy_asset(self):
+        status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
+        site_id = payload["site"]["id"]
+
+        # 画像ファイルを作成してから取り込む
+        assets_dir = Path(CONFIG.data_dir) / "repos" / site_id / "assets"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        (assets_dir / "photo.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        status, payload = self.request(
+            "POST",
+            f"/api/sites/{site_id}/assets",
+            {"source": "assets/photo.png", "target": "images/photo.png", "page": "index.html"},
+        )
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["path"], "images/photo.png")
+        self.assertEqual(payload["reference"], "images/photo.png")
+        self.assertTrue((Path(CONFIG.data_dir) / "repos" / site_id / "images" / "photo.png").exists())
+
+        # 同名ファイルがある場合は連番になる
+        status, payload = self.request(
+            "POST",
+            f"/api/sites/{site_id}/assets",
+            {"source": "assets/photo.png", "target": "images/photo.png", "page": "index.html"},
+        )
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["path"], "images/photo-1.png")
+
+        # サブディレクトリのページからの相対パス
+        status, payload = self.request(
+            "POST",
+            f"/api/sites/{site_id}/assets",
+            {"source": "assets/photo.png", "target": "images/photo.png", "page": "sub/page.html"},
+        )
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["reference"], "../images/photo-2.png")
+
+        # サイト外へのコピーは拒否される
+        status, payload = self.request(
+            "POST",
+            f"/api/sites/{site_id}/assets",
+            {"source": "assets/photo.png", "target": "../escape.png", "page": "index.html"},
+        )
+        self.assertEqual(status, 400)
+
+        self.request("DELETE", f"/api/sites/{site_id}", {})
 
     def test_unknown_site(self):
         status, payload = self.request("GET", "/api/sites/nope/tree")

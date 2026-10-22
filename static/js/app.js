@@ -454,6 +454,15 @@
         row.addEventListener("click", function () {
           openFile(entry.path);
         });
+        if (isImagePath(entry.path)) {
+          row.draggable = true;
+          row.title = entry.path + " (エディターへドラッグして埋め込めます)";
+          row.addEventListener("dragstart", function (event) {
+            event.dataTransfer.setData("application/x-htmledit-path", entry.path);
+            event.dataTransfer.setData("text/plain", entry.path);
+            event.dataTransfer.effectAllowed = "copy";
+          });
+        }
       } else {
         row.addEventListener("click", function () {
           state.collapsed[entry.path] = !state.collapsed[entry.path];
@@ -776,6 +785,313 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* プロパティペイン (リンク / 画像)                                     */
+  /* ------------------------------------------------------------------ */
+  var IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp", "ico"];
+
+  function isImagePath(path) {
+    var ext = (path.split(".").pop() || "").toLowerCase();
+    return IMAGE_EXTENSIONS.indexOf(ext) >= 0;
+  }
+
+  function baseName(path) {
+    var parts = (path || "").split("/");
+    return parts[parts.length - 1] || path;
+  }
+
+  function propRow(label, control) {
+    var row = document.createElement("label");
+    row.className = "field";
+    var caption = document.createElement("span");
+    caption.className = "field-label";
+    caption.textContent = label;
+    row.appendChild(caption);
+    row.appendChild(control);
+    return row;
+  }
+
+  function propInput(value, onChange, type) {
+    var input = document.createElement("input");
+    input.className = "input";
+    input.type = type || "text";
+    input.value = value == null ? "" : value;
+    input.addEventListener("change", function () {
+      onChange(input.value);
+    });
+    return input;
+  }
+
+  function propCheck(checked, label, onChange) {
+    var wrapper = document.createElement("label");
+    wrapper.className = "check";
+    var input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = !!checked;
+    input.addEventListener("change", function () {
+      onChange(input.checked);
+    });
+    var text = document.createElement("span");
+    text.textContent = label;
+    wrapper.appendChild(input);
+    wrapper.appendChild(text);
+    return wrapper;
+  }
+
+  function propButton(label, onClick, title) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn btn-sm";
+    button.textContent = label;
+    if (title) {
+      button.title = title;
+    }
+    button.addEventListener("click", onClick);
+    return button;
+  }
+
+  function propSection(title) {
+    var section = document.createElement("section");
+    section.className = "prop-section";
+    var heading = document.createElement("h3");
+    heading.className = "card-title";
+    heading.textContent = title;
+    section.appendChild(heading);
+    return section;
+  }
+
+  function renderProperties(info) {
+    state.selection = info;
+    var body = el.propBody;
+    body.innerHTML = "";
+
+    var link = info && info.link;
+    var image = info && info.image;
+    if (!link && !image) {
+      body.innerHTML =
+        '<div class="prop-empty">エディター上でリンクや画像をクリックすると、ここにオプションが表示されます。<br /><br />' +
+        "画像はファイルツリーやローカルファイルから直接ドロップして埋め込めます。</div>";
+      return;
+    }
+
+    if (link) {
+      body.appendChild(buildLinkSection(link));
+    }
+    if (image) {
+      body.appendChild(buildImageSection(image));
+    }
+  }
+
+  function buildLinkSection(link) {
+    var section = propSection("ハイパーリンク");
+    var href = link.getAttribute("href") || "";
+
+    section.appendChild(
+      propRow("リンク先 URL", propInput(href, function (value) {
+        link.setAttribute("href", value);
+        editor.notifyChange();
+      }))
+    );
+    section.appendChild(
+      propRow("表示文字列", propInput(link.textContent || "", function (value) {
+        link.textContent = value;
+        editor.notifyChange();
+      }))
+    );
+    section.appendChild(
+      propCheck(link.getAttribute("target") === "_blank", "新しいページで開く (target=_blank)", function (checked) {
+        if (checked) {
+          link.setAttribute("target", "_blank");
+          link.setAttribute("rel", link.getAttribute("rel") || "noopener");
+        } else {
+          link.removeAttribute("target");
+        }
+        editor.notifyChange();
+      })
+    );
+    section.appendChild(
+      propRow("title 属性", propInput(link.getAttribute("title") || "", function (value) {
+        if (value) {
+          link.setAttribute("title", value);
+        } else {
+          link.removeAttribute("title");
+        }
+        editor.notifyChange();
+      }))
+    );
+    section.appendChild(
+      propRow("rel 属性", propInput(link.getAttribute("rel") || "", function (value) {
+        if (value) {
+          link.setAttribute("rel", value);
+        } else {
+          link.removeAttribute("rel");
+        }
+        editor.notifyChange();
+      }))
+    );
+
+    var actions = document.createElement("div");
+    actions.className = "btn-row";
+    actions.appendChild(
+      propButton("リンクを開く", function () {
+        window.open(link.getAttribute("href") || "#", "_blank", "noopener");
+      })
+    );
+    actions.appendChild(
+      propButton("URL をコピー", function () {
+        var value = link.getAttribute("href") || "";
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(value);
+        }
+        toast("URL をコピーしました: " + value, "success");
+      })
+    );
+    section.appendChild(actions);
+    return section;
+  }
+
+  function buildImageSection(image) {
+    var section = propSection("画像");
+    var src = image.getAttribute("src") || "";
+    var parentLink = editor.closestElement(image.parentElement, "A");
+
+    section.appendChild(
+      propRow("画像 URL", propInput(src, function (value) {
+        image.setAttribute("src", value);
+        editor.notifyChange();
+      }))
+    );
+    section.appendChild(
+      propRow("代替テキスト (alt)", propInput(image.getAttribute("alt") || "", function (value) {
+        image.setAttribute("alt", value);
+        editor.notifyChange();
+      }))
+    );
+    section.appendChild(
+      propRow("幅 (px)", propInput(image.getAttribute("width") || "", function (value) {
+        if (value) {
+          image.setAttribute("width", value);
+        } else {
+          image.removeAttribute("width");
+        }
+        editor.notifyChange();
+      }, "text"))
+    );
+    section.appendChild(
+      propRow("高さ (px)", propInput(image.getAttribute("height") || "", function (value) {
+        if (value) {
+          image.setAttribute("height", value);
+        } else {
+          image.removeAttribute("height");
+        }
+        editor.notifyChange();
+      }, "text"))
+    );
+    section.appendChild(
+      propRow("title 属性", propInput(image.getAttribute("title") || "", function (value) {
+        if (value) {
+          image.setAttribute("title", value);
+        } else {
+          image.removeAttribute("title");
+        }
+        editor.notifyChange();
+      }))
+    );
+    section.appendChild(
+      propCheck(!!parentLink, "画像をクリック時にリンクを開く", function (checked) {
+        toggleImageLink(image, checked);
+        editor.notifyChange();
+        renderProperties(state.selection);
+      })
+    );
+    if (parentLink) {
+      section.appendChild(
+        propRow("リンク先 URL", propInput(parentLink.getAttribute("href") || "", function (value) {
+          parentLink.setAttribute("href", value);
+          editor.notifyChange();
+        }))
+      );
+      section.appendChild(
+        propCheck(parentLink.getAttribute("target") === "_blank", "新しいページで開く", function (checked) {
+          if (checked) {
+            parentLink.setAttribute("target", "_blank");
+            parentLink.setAttribute("rel", parentLink.getAttribute("rel") || "noopener");
+          } else {
+            parentLink.removeAttribute("target");
+          }
+          editor.notifyChange();
+        })
+      );
+    }
+
+    var actions = document.createElement("div");
+    actions.className = "btn-row";
+    actions.appendChild(
+      propButton("元画像を開く", function () {
+        window.open(image.getAttribute("src") || "#", "_blank", "noopener");
+      })
+    );
+    actions.appendChild(
+      propButton("画像を削除", function () {
+        if (image.parentNode) {
+          image.parentNode.removeChild(image);
+        }
+        editor.notifyChange();
+        renderProperties(null);
+      })
+    );
+    section.appendChild(actions);
+    return section;
+  }
+
+  function toggleImageLink(image, wantLink) {
+    var existing = editor.closestElement(image.parentElement, "A");
+    if (wantLink && !existing) {
+      var anchor = document.createElement("a");
+      anchor.href = image.getAttribute("src") || "#";
+      anchor.target = "_blank";
+      anchor.rel = "noopener";
+      image.parentNode.insertBefore(anchor, image);
+      anchor.appendChild(image);
+    } else if (!wantLink && existing) {
+      var parent = existing.parentNode;
+      while (existing.firstChild) {
+        parent.insertBefore(existing.firstChild, existing);
+      }
+      parent.removeChild(existing);
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 画像のドラッグ＆ドロップ                                            */
+  /* ------------------------------------------------------------------ */
+  function onDropSiteFile(path) {
+    if (!state.siteId) {
+      return;
+    }
+    if (!isImagePath(path)) {
+      toast("画像ファイルのみドロップできます: " + path, "warn");
+      return;
+    }
+    var name = baseName(path);
+    var target = "images/" + name;
+    api("/api/sites/" + encodeURIComponent(state.siteId) + "/assets", {
+      method: "POST",
+      body: { source: path, target: target, page: state.path || "" }
+    })
+      .then(function (payload) {
+        editor.insertImage(payload.reference, name);
+        toast("画像を挿入しました: " + payload.reference, "success");
+        refreshTree();
+      })
+      .catch(function (error) {
+        toast("画像の取り込みに失敗しました: " + error.message, "error");
+        if (window.console) {
+          window.console.error(error);
+        }
+      });
+  }
+
+  /* ------------------------------------------------------------------ */
   /* 初期化                                                              */
   /* ------------------------------------------------------------------ */
   var editor = null;
@@ -788,6 +1104,15 @@
     });
     el.btnRefreshTree.addEventListener("click", refreshTree);
     el.btnRefreshGit.addEventListener("click", refreshGit);
+    el.btnClearSelection.addEventListener("click", function () {
+      var selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+      }
+      editor.selectedImage = null;
+      editor.selectedLink = null;
+      renderProperties(null);
+    });
     el.btnSave.addEventListener("click", saveFile);
     el.btnPull.addEventListener("click", runPull);
     el.btnPush.addEventListener("click", runPush);
@@ -840,6 +1165,7 @@
     el.commitList = $("commit-list");
     el.repoInfo = $("repo-info");
     el.githubInfo = $("github-info");
+    el.propBody = $("prop-body");
     el.toastContainer = $("toast-container");
     el.siteDialog = $("site-dialog");
     el.siteForm = $("site-form");
@@ -854,6 +1180,7 @@
     el.btnSiteCancel = $("btn-site-cancel");
     el.btnRefreshTree = $("btn-refresh-tree");
     el.btnRefreshGit = $("btn-refresh-git");
+    el.btnClearSelection = $("btn-clear-selection");
 
     editor = window.htmleditEditor.create({
       host: $("wysiwyg-host"),
@@ -863,6 +1190,18 @@
       status: $("editor-status"),
       onDirtyChange: function (dirty) {
         el.dirtyFlag.hidden = !dirty;
+      },
+      onSelection: function (info) {
+        renderProperties(info);
+      },
+      onDropSiteFile: function (path) {
+        onDropSiteFile(path);
+      },
+      onDropUnsupported: function (message) {
+        toast(message, "warn");
+      },
+      onImageEmbedded: function (name) {
+        toast("画像を埋め込みました: " + name, "success");
       }
     });
 

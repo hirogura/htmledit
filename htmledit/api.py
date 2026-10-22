@@ -245,6 +245,23 @@ def save_site_file(request: Request, params: dict) -> dict:
     return {"ok": True, **result}
 
 
+@route("POST", r"/api/sites/(?P<site_id>[^/]+)/assets")
+def copy_asset(request: Request, params: dict) -> dict:
+    """サイドバーからドロップした画像などをリポジトリ内へ取り込む."""
+    site = _site(params["site_id"])
+    payload = request.json()
+    source = str(payload.get("source", "")).strip()
+    target = str(payload.get("target", "")).strip()
+    page = str(payload.get("page", "")).strip()
+    if not source or not target:
+        raise ApiError(400, "source と target を指定してください。")
+    try:
+        result = sites.copy_asset(site, source, target, page=page)
+    except SiteError as exc:
+        raise ApiError(400, str(exc)) from exc
+    return {"ok": True, **result}
+
+
 # --------------------------------------------------------------------------
 # Git 操作
 # --------------------------------------------------------------------------

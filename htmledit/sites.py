@@ -330,3 +330,40 @@ def write_file(site: Site, relative: str, content: str) -> dict:
 
 def is_html(path: str) -> bool:
     return Path(path).suffix.lower() in (".html", ".htm", ".xhtml")
+
+
+def copy_asset(site: Site, source: str, target: str, page: str = "") -> dict:
+    """サイト内の画像ファイルを別の場所へコピーし、HTML からの相対パスを返す."""
+    source_path = resolve_path(site, source)
+    if not source_path.is_file():
+        raise SiteError(f"ファイルが見つかりません: {source}")
+
+    target_rel = (target or "").strip().lstrip("/")
+    if not target_rel:
+        raise SiteError("保存先を指定してください。")
+    target_path = resolve_path(site, target_rel)
+    root = Path(os.path.realpath(site.path))
+    if root not in target_path.parents:
+        raise SiteError("サイト配下のパス以外には保存できません。")
+
+    if target_path.exists():
+        stem, suffix = target_path.stem, target_path.suffix
+        index = 1
+        while target_path.exists():
+            target_path = target_path.with_name(f"{stem}-{index}{suffix}")
+            index += 1
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_path, target_path)
+
+    target_rel = target_path.relative_to(root).as_posix()
+    reference = target_rel
+    if page:
+        page_rel = page.strip().lstrip("/")
+        page_dir = os.path.dirname(page_rel) or "."
+        reference = os.path.relpath(target_rel, page_dir).replace(os.sep, "/")
+    return {
+        "path": target_rel,
+        "reference": reference,
+        "size": target_path.stat().st_size,
+    }
