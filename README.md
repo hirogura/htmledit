@@ -33,12 +33,13 @@ sudo ./deploy/install.sh
 
 `install.sh` は次のことを行います。
 
-1. Python とモジュールの読み込みを事前チェック
+1. root / systemd / Python 3.11+ / git の有無と、モジュールの読み込みを事前チェック
 2. `/etc/systemd/system/htmledit.service` を作成
 3. `/etc/htmledit/htmledit.env` を作成 (`GITHUB_TOKEN` や basic 認証はここで設定)
 4. `systemctl enable` + `systemctl restart` で起動し、起動できなければログを表示して異常終了
 
-`install.sh` は環境変数で上書きできます。
+`install.sh` は環境変数で上書きできます。LXD 以外 (VPS / 物理マシン) でも
+保存先やポートを変更すればインストールできます。
 
 | 変数 | 既定値 | 説明 |
 | --- | --- | --- |
@@ -46,6 +47,26 @@ sudo ./deploy/install.sh
 | `HTMLEDIT_PORT` | `3372` | 待ち受けポート |
 | `HTMLEDIT_HOST` | `127.0.0.1` | 待ち受けアドレス (LAN から直接アクセスする場合は `0.0.0.0`) |
 | `HTMLEDIT_RUN_USER` | `root` | サービスの実行ユーザー |
+| `HTMLEDIT_SERVICE_NAME` | `htmledit` | systemd ユニット名 |
+| `HTMLEDIT_DATA_DIR` | `/opt/lxd-data/htmledit-data` | サイト登録情報と認証情報の保存先 |
+| `HTMLEDIT_MEMO_DIR` | `/opt/lxd-data/htmledit-memo` | メモの保存先 |
+| `HTMLEDIT_ENV_DIR` | `/etc/htmledit` | 環境設定ファイルの配置先 |
+
+例: ポートと保存先を変更してインストールする。
+
+```bash
+sudo HTMLEDIT_PORT=8080 \
+     HTMLEDIT_DATA_DIR=/var/lib/htmledit/data \
+     HTMLEDIT_MEMO_DIR=/var/lib/htmledit/memo \
+     ./deploy/install.sh
+```
+
+注意:
+
+- `/etc/htmledit/htmledit.env` は既に存在すると変更しません (設定は手動で編集してください)
+- 保存先を `/tmp` 配下にした場合、systemd の `PrivateTmp` を自動で無効にします
+- systemd 以外の環境 (openrc や PID 1 が systemd でないコンテナ) では
+  `python3 -m htmledit` を直接起動してください
 
 手動で起動する場合:
 
@@ -211,7 +232,7 @@ SSH リモート (`git@github.com:...`) では SSH 鍵が使われます。
 
 | 表示 | 動作 |
 | --- | --- |
-| `v.0.9.2` | 実行中のバージョン |
+| `v.0.9.3` | 実行中のバージョン |
 | opencode | opencode パネルを開き、opencode (AI) を起動する (未インストールなら自動インストール) |
 | プロパティ | プロパティペイン (リンク / 画像の設定) の表示 / 非表示を切り替える |
 | GitHub | GitHub ペイン (リポジトリ情報と pull / commit / push) の表示 / 非表示を切り替える |
