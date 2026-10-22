@@ -38,14 +38,15 @@ fi
 systemctl restart "${SERVICE}.service"
 sleep 1
 
-# 2) tailnet 内に HTTPS で公開する
+# 2) tailnet 内に HTTPS で公開する (443 と 3372 の両方)
 echo "==> tailscale serve を設定します (http://${HOST}:${PORT})"
 tailscale serve --bg --https=443 "http://${HOST}:${PORT}"
+tailscale serve --bg --https="${PORT}" "http://${HOST}:${PORT}"
 
 # 3) 公開 URL を環境変数に設定する (トップバーの「公開URL」リンク用)
 PUBLIC_URL="$(tailscale status --json 2>/dev/null | python3 -c 'import json,sys; print((json.load(sys.stdin).get("Self") or {}).get("DNSName","").rstrip("."))' 2>/dev/null || true)"
 if [ -n "${PUBLIC_URL}" ]; then
-  URL="https://${PUBLIC_URL}/"
+  URL="https://${PUBLIC_URL}:${PORT}/"
   if [ -f "${ENV_FILE}" ]; then
     if grep -q "^HTMLEDIT_PUBLIC_URL=" "${ENV_FILE}"; then
       sed -i "s|^HTMLEDIT_PUBLIC_URL=.*|HTMLEDIT_PUBLIC_URL=${URL}|" "${ENV_FILE}"
@@ -57,6 +58,7 @@ if [ -n "${PUBLIC_URL}" ]; then
   fi
   echo ""
   echo "公開 URL: ${URL}"
+  echo "         https://${PUBLIC_URL}/ (443 も同じ内容で公開中)"
 else
   echo ""
   echo "公開 URL: tailscale serve status で確認してください"

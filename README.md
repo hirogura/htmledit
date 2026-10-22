@@ -104,8 +104,11 @@ sudo ./deploy/tailscale-serve.sh
 このスクリプトは次のことを行います。
 
 1. `/etc/htmledit/htmledit.env` の `HTMLEDIT_HOST` を `127.0.0.1` にしてサービスを再起動
-2. `tailscale serve --bg --https=443 http://127.0.0.1:3372` を実行 (tailnet 内に HTTPS で公開)
-3. 公開 URL を `HTMLEDIT_PUBLIC_URL` に設定 (トップバーの「公開URL」リンクに表示)
+2. `tailscale serve` で 443 と 3372 の両方を HTTPS で公開
+   - `tailscale serve --bg --https=443 http://127.0.0.1:3372`
+   - `tailscale serve --bg --https=3372 http://127.0.0.1:3372`
+3. 公開 URL (`https://<tailnet のホスト名>:3372/`) を `HTMLEDIT_PUBLIC_URL` に設定
+   (トップバーの「公開URL」リンクに表示)
 
 証明書は Tailscale が自動で Let's Encrypt の証明書を発行します。
 `tailscale serve status` で公開先を確認、`tailscale serve --https=443 off` で公開を停止します。
