@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,7 @@ sys.path.insert(0, str(ROOT))
 TMP = Path(tempfile.mkdtemp(prefix="htmledit-test-"))
 os.environ["HTMLEDIT_DATA_DIR"] = str(TMP / "data")
 os.environ["HTMLEDIT_ALLOW_LOCAL_PATHS"] = "1"
+os.environ["HTMLEDIT_MEMO_FILE"] = str(TMP / "memo.md")
 os.environ["HTMLEDIT_PORT"] = "0"
 
 from htmledit import server  # noqa: E402
@@ -121,8 +123,8 @@ class ApiTestCase(unittest.TestCase):
     def test_version(self):
         status, payload = self.request("GET", "/api/version")
         self.assertEqual(status, 200)
-        self.assertEqual(payload["version"], "0.5.0")
-        self.assertEqual(payload["label"], "v.0.5.0")
+        self.assertEqual(payload["version"], "0.6.0")
+        self.assertEqual(payload["label"], "v.0.6.0")
 
     def test_site_lifecycle(self):
         status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
@@ -342,6 +344,69 @@ class ApiTestCase(unittest.TestCase):
         self.assertEqual(status, 404)
 
         self.request("DELETE", f"/api/sites/{site_id}", {})
+
+    def test_memo_api(self):
+        status, payload = self.request("GET", "/api/memo")
+        self.assertEqual(status, 200, payload)
+        self.assertIn("memo.md", payload["path"])
+
+        status, payload = self.request("PUT", "/api/memo", {"content": "# メモ\nテスト\n"})
+        self.assertEqual(status, 200, payload)
+        self.assertTrue(Path(payload["path"]).exists())
+
+        status, payload = self.request("GET", "/api/memo")
+        self.assertEqual(payload["content"], "# メモ\nテスト\n")
+
+    def test_opencode_status(self):
+        status, payload = self.request("GET", "/api/opencode/status")
+        self.assertEqual(status, 200, payload)
+        self.assertIn("installed", payload)
+        self.assertIn("installing", payload)
+
+    def test_terminal_websocket(self):
+        import base64
+        import struct
+        import time
+
+        port = self.port
+        key = base64.b64encode(os.urandom(16)).decode()
+        sock = socket.create_connection(("127.0.0.1", port), timeout=10)
+        try:
+            sock.sendall(
+                (
+                    f"GET /ws/terminal?id=test-session HTTP/1.1\r\n"
+                    f"Host: 127.0.0.1:{port}\r\n"
+                    "Upgrade: websocket\r\n"
+                    "Connection: Upgrade\r\n"
+                    f"Sec-WebSocket-Key: {key}\r\n"
+                    "Sec-WebSocket-Version: 13\r\n\r\n"
+                ).encode()
+            )
+            response = sock.recv(4096)
+            self.assertIn(b"101 Switching Protocols", response)
+
+            payload = json.dumps({"type": "command", "data": "echo htmledit-terminal-ok"}).encode()
+            mask = os.urandom(4)
+            header = bytearray([0x81])
+            header.append(0x80 | len(payload))
+            header += mask
+            header += bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
+            sock.sendall(bytes(header))
+
+            sock.settimeout(10)
+            buffer = b""
+            deadline = time.time() + 10
+            while time.time() < deadline and b"htmledit-terminal-ok" not in buffer:
+                try:
+                    chunk = sock.recv(65536)
+                except socket.timeout:
+                    break
+                if not chunk:
+                    break
+                buffer += chunk
+            self.assertIn(b"htmledit-terminal-ok", buffer)
+        finally:
+            sock.close()
 
     def test_unknown_site(self):
         status, payload = self.request("GET", "/api/sites/nope/tree")

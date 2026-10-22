@@ -128,6 +128,29 @@ public/images/2026/10/22/photo.png
 - `.gitignore` で無視されるファイルに画像を保存した場合は、警告を表示する
   (警告された画像はコミットされないため、`src` を確認すること)
 
+## opencode (AI) によるサイト編集
+
+トップバーの「opencode」ボタンを押すと、画面下部にターミナルパネルが開きます。
+
+- ターミナルは PTY 上の bash (xterm.js + WebSocket) で、選択中のサイトの
+  作業ディレクトリをカレントディレクトリにして起動します
+  (AI がそのままサイトのファイルを編集できます)
+- opencode が未インストールの場合、自動で `curl -fsSL https://opencode.ai/install | bash`
+  を実行してインストールします (進捗はターミナルに表示)
+- インストール済みの場合は `opencode` を自動起動し、AI による編集を始められます
+- 「opencode 起動」ボタンでいつでも起動し直せます
+- opencode には AI プロバイダーの認証情報が必要です
+  (`~/.local/share/opencode/auth.json` などの opencode 側の設定を使用します)
+
+## メモ
+
+トップバーの「メモ」ボタンを押すと画面下部にメモパネルが開きます。
+
+- 入力内容は `/opt/htmledit/memo/memo.md` に保存されます
+- 「保存」ボタンまたは `Ctrl+S` で保存します
+- 保存先パスを変更する場合は `HTMLEDIT_MEMO_FILE` 環境変数を設定してください
+- メモファイルはリポジトリ内に置かれるため、コミットすると GitHub にも公開されます
+
 ## 認証情報 (ユーザーID / PAT)
 
 「サイトを追加」ウィンドウには **ユーザーID** と **PAT (Personal Access Token)** の項目があります。
@@ -150,13 +173,15 @@ SSH リモート (`git@github.com:...`) では SSH 鍵が使われます。
 
 | 表示 | 動作 |
 | --- | --- |
-| `v.0.5.0` | 実行中のバージョン |
+| `v.0.6.0` | 実行中のバージョン |
+| opencode | ターミナルパネルを開き、opencode (AI) を起動する (未インストールなら自動インストール) |
 | プロパティ | プロパティペイン (リンク / 画像の設定) の表示 / 非表示を切り替える |
 | GitHub | GitHub ペイン (リポジトリ情報と pull / commit / push) の表示 / 非表示を切り替える |
+| メモ | メモパネルの表示 / 非表示を切り替える |
 | アップデート | `https://github.com/hirogura/htmledit.git` から `git fetch` + `git merge --ff-only` で自身を更新する |
 | 再起動 | `systemctl restart htmledit` でサービスを再起動する (systemd がない環境ではプロセスを再実行) |
 
-「プロパティ」「GitHub」ボタンは、表示中のパネルはアクセント色で示され、
+「プロパティ」「GitHub」「メモ」ボタンは、表示中のパネルはアクセント色で示され、
 非表示にするとペインが閉じてエディターが広がる。
 
 アップデートの反映には再起動が必要です。アップデート完了後は「再起動」ボタンを押してください。
@@ -232,6 +257,7 @@ Cloudflare のダッシュボードで確認してください。
 | `HTMLEDIT_AUTH_USER` / `HTMLEDIT_AUTH_PASSWORD` | (空) | basic 認証 |
 | `HTMLEDIT_COMMIT_USER_NAME` / `HTMLEDIT_COMMIT_USER_EMAIL` | `htmledit` / `htmledit@localhost` | コミットの作者情報 |
 | `HTMLEDIT_SERVICE_NAME` | `htmledit` | 再起動時に操作する systemd ユニット名 |
+| `HTMLEDIT_MEMO_FILE` | `/opt/htmledit/memo/memo.md` | メモの保存先 |
 | `HTMLEDIT_ALLOW_LOCAL_PATHS` | `1` | ローカルパスのリポジトリ登録を許可するか |
 
 ## ディレクトリ構成
@@ -251,8 +277,10 @@ htmledit/
 ├── static/              フロントエンド (依存ライブラリなし)
 │   ├── index.html
 │   ├── css/app.css
-│   └── js/{app,editor}.js
+│   ├── js/{app,editor,terminal}.js
+│   └── vendor/xterm/    xterm.js (MIT) — ターミナル表示用
 ├── deploy/              systemd / Tailscale / Cloudflare 関連の設定
+├── memo/                メモの保存先 (memo.md)
 ├── tests/               結合テスト
 └── data/                実行時データ (gitignore 対象)
     ├── sites.json       登録済みサイト
@@ -281,6 +309,11 @@ htmledit/
 | POST | `/api/sites/{id}/git/push` | push |
 | GET | `/api/github/repo?owner=&repo=` | GitHub リポジトリ情報 |
 | GET | `/site/{id}/{path}` | サイトのリポジトリ内のファイル配信 (エディター内の相対 URL 解決用) |
+| GET | `/api/memo` | メモの読み取り |
+| PUT | `/api/memo` | メモの保存 |
+| GET | `/api/opencode/status` | opencode のインストール状況 |
+| POST | `/api/opencode/install` | opencode のインストール |
+| WS | `/ws/terminal` | ターミナル (PTY) の WebSocket |
 | POST | `/api/self/update` | htmledit 自身のアップデート |
 | POST | `/api/self/restart` | htmledit サービスの再起動 |
 

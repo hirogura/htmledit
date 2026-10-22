@@ -275,6 +275,11 @@
     renderSites();
     refreshTree();
     refreshGit();
+    if (terminalPanel && el.terminalPanel.classList.contains("is-open")) {
+      terminalPanel.connect(siteId);
+      var site = currentSite();
+      el.terminalCwd.textContent = site ? site.url : "";
+    }
   }
 
   /* エディター内の相対 URL (images/... など) をサイトファイルへ解決させる */
@@ -1175,6 +1180,152 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* 下部パネル (メモ / ターミナル)                                       */
+  /* ------------------------------------------------------------------ */
+  var terminalPanel = null;
+  var memoLoaded = false;
+
+  function isBottomOpen() {
+    return el.workspace.classList.contains("has-bottom");
+  }
+
+  function syncBottomPanel() {
+    var memoOpen = el.memoPanel.classList.contains("is-open");
+    var termOpen = el.terminalPanel.classList.contains("is-open");
+    el.workspace.classList.toggle("has-bottom", memoOpen || termOpen);
+    el.btnToggleMemo.classList.toggle("is-active", memoOpen);
+    if (termOpen && terminalPanel) {
+      setTimeout(function () {
+        terminalPanel.fit();
+      }, 60);
+    }
+  }
+
+  function toggleMemo(force) {
+    var open = force === undefined ? !el.memoPanel.classList.contains("is-open") : force;
+    el.memoPanel.classList.toggle("is-open", open);
+    if (open) {
+      loadMemo();
+    }
+    syncBottomPanel();
+  }
+
+  function loadMemo() {
+    api("/api/memo")
+      .then(function (payload) {
+        el.memoText.value = payload.content || "";
+        el.memoPath.textContent = payload.path;
+        el.memoStatus.textContent = payload.exists ? "読み込みました" : "新規メモです";
+        memoLoaded = true;
+      })
+      .catch(function (error) {
+        el.memoStatus.textContent = "メモの読み込みに失敗しました: " + error.message;
+      });
+  }
+
+  function saveMemo() {
+    busy(el.btnMemoSave, true);
+    api("/api/memo", { method: "PUT", body: { content: el.memoText.value } })
+      .then(function (payload) {
+        el.memoStatus.textContent = "保存しました: " + payload.path;
+        toast("メモを保存しました: " + payload.path, "success");
+      })
+      .catch(function (error) {
+        el.memoStatus.textContent = "保存に失敗しました: " + error.message;
+        toast("メモの保存に失敗しました: " + error.message, "error");
+      })
+      .finally(function () {
+        busy(el.btnMemoSave, false);
+      });
+  }
+
+  function openTerminal() {
+    el.terminalPanel.classList.add("is-open");
+    syncBottomPanel();
+    if (terminalPanel) {
+      terminalPanel.connect(state.siteId);
+      var site = currentSite();
+      el.terminalCwd.textContent = site ? site.url : "";
+    }
+  }
+
+  function toggleTerminal(force) {
+    var open = force === undefined ? !el.terminalPanel.classList.contains("is-open") : force;
+    el.terminalPanel.classList.toggle("is-open", open);
+    if (open) {
+      openTerminal();
+    }
+    syncBottomPanel();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* opencode (AI)                                                        */
+  /* ------------------------------------------------------------------ */
+  function openOpencode() {
+    openTerminal();
+    api("/api/opencode/status")
+      .then(function (status) {
+        if (status.installed) {
+          startOpencode();
+        } else {
+          installOpencode();
+        }
+      })
+      .catch(function (error) {
+        toast("opencode の確認に失敗しました: " + error.message, "error");
+      });
+  }
+
+  function startOpencode() {
+    if (!terminalPanel) {
+      return;
+    }
+    terminalPanel.write("\r\n\x1b[36m[htmledit] opencode を起動します...\x1b[0m\r\n");
+    terminalPanel.run("opencode");
+  }
+
+  function installOpencode() {
+    toast("opencode が未インストールのため、インストールを開始します", "warn");
+    terminalPanel.write(
+      "\r\n\x1b[33m[htmledit] opencode をインストールしています (数分かかる場合があります)\x1b[0m\r\n"
+    );
+    api("/api/opencode/install", { method: "POST" })
+      .then(function () {
+        pollOpencodeInstall();
+      })
+      .catch(function (error) {
+        toast("opencode のインストールに失敗しました: " + error.message, "error");
+      });
+  }
+
+  function pollOpencodeInstall() {
+    var timer = setInterval(function () {
+      api("/api/opencode/status")
+        .then(function (status) {
+          if (status.installing) {
+            var last = (status.log || []).slice(-1)[0];
+            if (last) {
+              terminalPanel.write("\r\n\x1b[90m" + last + "\x1b[0m\r\n");
+            }
+            return;
+          }
+          clearInterval(timer);
+          if (status.installed) {
+            toast("opencode のインストールが完了しました", "success");
+            terminalPanel.write("\r\n\x1b[32m[htmledit] インストールが完了しました\x1b[0m\r\n");
+            startOpencode();
+          } else {
+            toast("opencode のインストールに失敗しました", "error");
+            terminalPanel.write("\r\n\x1b[31m[htmledit] インストールに失敗しました\x1b[0m\r\n");
+          }
+        })
+        .catch(function () {
+          clearInterval(timer);
+        });
+    }, 3000);
+  }
+
+  /* ------------------------------------------------------------------ */
   /* パネルの表示 / 非表示の切り替え                                      */
   /* ------------------------------------------------------------------ */
   function togglePane(name) {
@@ -1225,6 +1376,27 @@
     });
     el.btnToggleGit.addEventListener("click", function () {
       togglePane("git");
+    });
+    el.btnToggleMemo.addEventListener("click", function () {
+      toggleMemo();
+    });
+    el.btnOpencode.addEventListener("click", openOpencode);
+    el.btnMemoSave.addEventListener("click", saveMemo);
+    el.btnMemoClose.addEventListener("click", function () {
+      toggleMemo(false);
+    });
+    el.btnTerminalClose.addEventListener("click", function () {
+      toggleTerminal(false);
+    });
+    el.btnTerminalOpencode.addEventListener("click", function () {
+      openOpencode();
+    });
+    el.memoText.addEventListener("keydown", function (event) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        event.stopPropagation();
+        saveMemo();
+      }
     });
     el.btnPreview.addEventListener("click", function () {
       var visible = editor.togglePreview();
@@ -1289,9 +1461,21 @@
     el.btnClearSelection = $("btn-clear-selection");
     el.btnToggleProp = $("btn-toggle-prop");
     el.btnToggleGit = $("btn-toggle-git");
+    el.btnToggleMemo = $("btn-toggle-memo");
+    el.btnOpencode = $("btn-opencode");
     el.workspace = $("workspace");
     el.propPane = $("prop-pane");
     el.gitPane = $("git-pane");
+    el.memoPanel = $("memo-panel");
+    el.terminalPanel = $("terminal-panel");
+    el.memoText = $("memo-text");
+    el.memoPath = $("memo-path");
+    el.memoStatus = $("memo-status");
+    el.btnMemoSave = $("btn-memo-save");
+    el.btnMemoClose = $("btn-memo-close");
+    el.btnTerminalClose = $("btn-terminal-close");
+    el.btnTerminalOpencode = $("btn-terminal-opencode");
+    el.terminalCwd = $("terminal-cwd");
 
     editor = window.htmleditEditor.create({
       host: $("wysiwyg-host"),
@@ -1315,6 +1499,19 @@
         uploadImage(file);
       }
     });
+
+    try {
+      terminalPanel = window.htmleditTerminal.create({
+        host: $("terminal"),
+        cwdLabel: $("terminal-cwd"),
+        onStatus: function (message) {
+          el.terminalCwd.title = message;
+        }
+      });
+    } catch (error) {
+      terminalPanel = null;
+      toast("ターミナルを初期化できませんでした: " + error.message, "error");
+    }
 
     bindEvents();
     loadVersion();

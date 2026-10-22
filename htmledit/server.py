@@ -13,8 +13,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-from . import VERSION, api, sites
-from .config import CONFIG, STATIC_DIR
+from . import VERSION, api, sites, terminal, websocket
+from .config import APP_ROOT, CONFIG, STATIC_DIR
 from .sites import REGISTRY, SiteError
 
 MAX_BODY = 16 * 1024 * 1024
@@ -104,6 +104,10 @@ class HtmleditHandler(BaseHTTPRequestHandler):
                 self._handle_api(method, path, split.query)
                 return
 
+            if path.startswith("/ws/"):
+                self._handle_websocket(method, path, split.query)
+                return
+
             if path.startswith("/site/"):
                 self._handle_site_file(method, path)
                 return
@@ -116,6 +120,86 @@ class HtmleditHandler(BaseHTTPRequestHandler):
         except Exception as exc:  # pragma: no cover - 想定外
             self.log_message("error: %s: %s", type(exc).__name__, exc)
             self._send_json(500, {"error": f"サーバーエラー: {exc}"})
+
+    def _handle_websocket(self, method: str, path: str, query: str) -> None:
+        """WebSocket (ターミナル) の接続を処理する."""
+        if method != "GET":
+            self._send_error_page(405, "このVerbは使用できません。")
+            return
+        key = self.headers.get("Sec-WebSocket-Key")
+        upgrade = (self.headers.get("Upgrade") or "").lower()
+        if not key or upgrade != "websocket":
+            self._send_error_page(400, "WebSocket 接続が必要です。")
+            return
+
+        params = parse_qs(query)
+        session_id = (params.get("id") or ["default"])[0]
+        site_id = (params.get("site") or [""])[0]
+        cwd = str(APP_ROOT)
+        if site_id:
+            try:
+                cwd = REGISTRY.get(site_id).path
+            except SiteError:
+                cwd = str(APP_ROOT)
+
+        self.wfile.write(websocket.handshake_response(key))
+        self.wfile.flush()
+        self.close_connection = True
+
+        session = terminal.TERMINALS.get(session_id, cwd)
+        stop = threading.Event()
+
+        def pump_output() -> None:
+            while not stop.is_set():
+                try:
+                    data = session.read()
+                except OSError:
+                    break
+                if not data:
+                    break
+                try:
+                    self.wfile.write(websocket.encode_frame(data, websocket.OP_BINARY))
+                    self.wfile.flush()
+                except (BrokenPipeError, OSError):
+                    break
+            stop.set()
+
+        reader = threading.Thread(target=pump_output, daemon=True)
+        reader.start()
+
+        try:
+            self.wfile.write(
+                websocket.encode_frame(
+                    json.dumps({"type": "data", "data": terminal.TERMINAL_WELCOME}).encode("utf-8")
+                )
+            )
+            self.wfile.flush()
+            while not stop.is_set():
+                opcode, payload = websocket.read_frame(self.rfile)
+                if opcode == websocket.OP_CLOSE:
+                    break
+                if opcode == websocket.OP_PING:
+                    self.wfile.write(websocket.encode_frame(payload, websocket.OP_PONG))
+                    self.wfile.flush()
+                    continue
+                if opcode not in (websocket.OP_TEXT, websocket.OP_BINARY):
+                    continue
+                try:
+                    message = json.loads(payload.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    continue
+                kind = message.get("type")
+                if kind == "input":
+                    session.write(str(message.get("data", "")))
+                elif kind == "resize":
+                    session.resize(message.get("cols", 100), message.get("rows", 30))
+                elif kind == "command":
+                    session.write(str(message.get("data", "")) + "\n")
+        except (ConnectionError, OSError):
+            pass
+        finally:
+            stop.set()
+            reader.join(timeout=1.0)
 
     def _handle_site_file(self, method: str, path: str) -> None:
         """サイトのリポジトリ内のファイルを配信する.

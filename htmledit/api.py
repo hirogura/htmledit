@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 from pathlib import Path
 
-from . import github, gitcmd, selfservice, sites
+from . import github, gitcmd, selfservice, sites, terminal
 from .config import APP_ROOT, CONFIG
 from .credentials import STORE as CREDENTIALS
 from .sites import REGISTRY, SiteError
@@ -393,3 +393,46 @@ def github_repo(request: Request, _params: dict) -> dict:
     owner = request.q("owner")
     repo = request.q("repo")
     return github.fetch_repo_info(owner, repo)
+
+
+# --------------------------------------------------------------------------
+# opencode
+# --------------------------------------------------------------------------
+
+@route("GET", r"/api/opencode/status")
+def opencode_status(_request: Request, _params: dict) -> dict:
+    return terminal.OPENCODE.status()
+
+
+@route("POST", r"/api/opencode/install")
+def opencode_install(_request: Request, _params: dict) -> dict:
+    return {"ok": True, **terminal.OPENCODE.install()}
+
+
+# --------------------------------------------------------------------------
+# メモ
+# --------------------------------------------------------------------------
+
+@route("GET", r"/api/memo")
+def get_memo(_request: Request, _params: dict) -> dict:
+    path = CONFIG.memo_file
+    try:
+        content = path.read_text("utf-8") if path.exists() else ""
+    except OSError as exc:
+        raise ApiError(500, f"メモを読み込めません: {exc}") from exc
+    return {"path": str(path), "content": content, "exists": path.exists()}
+
+
+@route("PUT", r"/api/memo")
+def save_memo(request: Request, _params: dict) -> dict:
+    payload = request.json()
+    content = payload.get("content")
+    if not isinstance(content, str):
+        raise ApiError(400, "content は文字列で指定してください。")
+    path = CONFIG.memo_file
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, "utf-8")
+    except OSError as exc:
+        raise ApiError(500, f"メモを保存できません: {exc}") from exc
+    return {"ok": True, "path": str(path), "size": path.stat().st_size}

@@ -62,6 +62,7 @@ class Config:
         self.commit_user_email = _env("HTMLEDIT_COMMIT_USER_EMAIL", "htmledit@localhost")
         self.allow_local_paths = _env_bool("HTMLEDIT_ALLOW_LOCAL_PATHS", True)
         self.git_timeout = _env_int("HTMLEDIT_GIT_TIMEOUT", 180)
+        self.memo_file = Path(_env("HTMLEDIT_MEMO_FILE", str(APP_ROOT / "memo" / "memo.md"))).expanduser()
         self.max_file_size = _env_int("HTMLEDIT_MAX_FILE_SIZE", 8 * 1024 * 1024)
         return self
 
