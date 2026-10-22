@@ -48,7 +48,7 @@ python3 -m htmledit --host 0.0.0.0     # LAN からも直接受け付けたい�
 公開は [Tailscale](#tailscale-による-https-公開) または [Cloudflare](#cloudflare-連携) 経由で行います。
 
 ```
-https://<tailnet のホスト名>/    # tailscale serve 経由 (HTTPS)
+https://<tailnet のホスト名>:3372/    # tailscale serve 経由 (HTTPS)
 ```
 
 ## 使い方
@@ -104,9 +104,9 @@ sudo ./deploy/tailscale-serve.sh
 このスクリプトは次のことを行います。
 
 1. `/etc/htmledit/htmledit.env` の `HTMLEDIT_HOST` を `127.0.0.1` にしてサービスを再起動
-2. `tailscale serve` で 443 と 3372 の両方を HTTPS で公開
-   - `tailscale serve --bg --https=443 http://127.0.0.1:3372`
+2. `tailscale serve` で 3372 番ポートのみを HTTPS で公開 (443 には公開しない)
    - `tailscale serve --bg --https=3372 http://127.0.0.1:3372`
+   - `tailscale serve --https=443 off` (443 で公開されていた場合)
 3. 公開 URL (`https://<tailnet のホスト名>:3372/`) を `HTMLEDIT_PUBLIC_URL` に設定
    (トップバーの「公開URL」リンクに表示)
 
