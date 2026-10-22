@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .config import CONFIG
 
-TOKEN_HELPER = '!f() { echo username=x-access-token; echo "password=$GITHUB_TOKEN"; }; f'
+TOKEN_HELPER = '!f() { echo "username=${GIT_AUTH_USERNAME:-x-access-token}"; echo "password=${GIT_AUTH_TOKEN}"; }; f'
 
 
 class GitError(RuntimeError):
@@ -23,6 +23,18 @@ class GitError(RuntimeError):
         super().__init__(message)
         self.stderr = stderr
         self.returncode = returncode
+
+
+@dataclass
+class Auth:
+    """Git の認証情報 (ユーザーID / PAT)."""
+
+    username: str = ""
+    token: str = ""
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.token)
 
 
 @dataclass
@@ -41,21 +53,30 @@ class GitResult:
         return self.stdout.strip()
 
 
-def _env() -> dict[str, str]:
+def _env(auth: Auth | None = None) -> dict[str, str]:
     env = os.environ.copy()
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GIT_SSH_COMMAND"] = env.get("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new")
     env["LC_ALL"] = env.get("LC_ALL", "C.UTF-8")
     env["LANG"] = env.get("LANG", "C.UTF-8")
     env["GIT_EDITOR"] = "true"
-    if CONFIG.github_token:
-        env["GITHUB_TOKEN"] = CONFIG.github_token
+    resolved = resolve_auth(auth)
+    if resolved is not None:
+        env["GIT_AUTH_USERNAME"] = resolved.username
+        env["GIT_AUTH_TOKEN"] = resolved.token
     return env
 
 
+def resolve_auth(auth: Auth | None = None) -> Auth | None:
+    """サイト固有の認証情報を優先し、無ければ環境変数の GITHUB_TOKEN を使う."""
+    if auth is not None and auth.token:
+        return Auth(username=auth.username or "x-access-token", token=auth.token)
+    if CONFIG.github_token:
+        return Auth(username="x-access-token", token=CONFIG.github_token)
+    return None
+
+
 def _auth_args() -> list[str]:
-    if not CONFIG.github_token:
-        return []
     return ["-c", "credential.helper=", "-c", f"credential.helper={TOKEN_HELPER}"]
 
 
@@ -65,17 +86,20 @@ def run_git(
     timeout: int | None = None,
     check: bool = False,
     use_auth: bool = False,
+    auth: Auth | None = None,
+    stdin: str | None = None,
 ) -> GitResult:
     """git を実行して結果を返す."""
     cmd: list[str] = ["git"]
-    if use_auth:
+    if use_auth and resolve_auth(auth) is not None:
         cmd += _auth_args()
     cmd += args
     try:
         proc = subprocess.run(
             cmd,
             cwd=str(cwd) if cwd else None,
-            env=_env(),
+            env=_env(auth),
+            input=stdin.encode("utf-8") if stdin is not None else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=timeout or CONFIG.git_timeout,
@@ -108,12 +132,12 @@ def is_git_repo(path: str | Path) -> bool:
     return result.ok and result.out == "true"
 
 
-def clone(url: str, dest: str | Path, branch: str = "") -> GitResult:
+def clone(url: str, dest: str | Path, branch: str = "", auth: Auth | None = None) -> GitResult:
     args = ["clone", "--origin", "origin"]
     if branch:
         args += ["--branch", branch]
     args += [url, str(dest)]
-    return run_git(args, use_auth=True, timeout=CONFIG.git_timeout * 2)
+    return run_git(args, use_auth=True, auth=auth, timeout=CONFIG.git_timeout * 2)
 
 
 def ensure_identity(path: str | Path) -> None:
@@ -282,12 +306,12 @@ def get_log(path: str | Path, limit: int = 20, skip: int = 0) -> list[dict]:
     return commits
 
 
-def pull(path: str | Path) -> GitResult:
-    return run_git(["pull", "--ff-only"], cwd=path, use_auth=True)
+def pull(path: str | Path, auth: Auth | None = None) -> GitResult:
+    return run_git(["pull", "--ff-only"], cwd=path, use_auth=True, auth=auth)
 
 
-def fetch(path: str | Path) -> GitResult:
-    return run_git(["fetch", "--prune", "origin"], cwd=path, use_auth=True)
+def fetch(path: str | Path, auth: Auth | None = None) -> GitResult:
+    return run_git(["fetch", "--prune", "origin"], cwd=path, use_auth=True, auth=auth)
 
 
 def commit(path: str | Path, message: str, paths: list[str] | None = None) -> GitResult:
@@ -300,14 +324,14 @@ def commit(path: str | Path, message: str, paths: list[str] | None = None) -> Gi
     return run_git(["commit", "-m", message], cwd=path)
 
 
-def push(path: str | Path, branch: str = "", set_upstream: bool = False) -> GitResult:
+def push(path: str | Path, branch: str = "", set_upstream: bool = False, auth: Auth | None = None) -> GitResult:
     args = ["push"]
     if set_upstream:
         args.append("--set-upstream")
     args.append("origin")
     if branch:
         args.append(branch)
-    return run_git(args, cwd=path, use_auth=True)
+    return run_git(args, cwd=path, use_auth=True, auth=auth)
 
 
 def discard_changes(path: str | Path, paths: list[str] | None = None) -> GitResult:

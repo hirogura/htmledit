@@ -46,7 +46,7 @@ class Config:
         self.reload()
 
     def reload(self) -> "Config":
-        self.host = _env("HTMLEDIT_HOST", "0.0.0.0")
+        self.host = _env("HTMLEDIT_HOST", "127.0.0.1")
         self.port = _env_int("HTMLEDIT_PORT", 3372)
         self.data_dir = Path(_env("HTMLEDIT_DATA_DIR", str(APP_ROOT / "data"))).expanduser()
         self.sites_file = self.data_dir / "sites.json"

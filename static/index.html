@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.0.1.0</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.0.2.0</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
@@ -102,7 +102,7 @@
 
     <dialog class="dialog" id="site-dialog">
       <form method="dialog" class="dialog-form" id="site-form">
-        <h2 class="dialog-title">サイトを追加</h2>
+        <h2 class="dialog-title" id="site-dialog-title">サイトを追加</h2>
         <label class="field">
           <span class="field-label">GitHub の URL</span>
           <input class="input" type="text" id="site-url" placeholder="https://github.com/owner/repo" required />
@@ -115,6 +115,21 @@
           <span class="field-label">表示名 (任意)</span>
           <input class="input" type="text" id="site-name" placeholder="owner/repo" />
         </label>
+        <fieldset class="fieldset">
+          <legend class="field-label">認証情報 (プライベートリポジトリ / push 用)</legend>
+          <label class="field">
+            <span class="field-label">ユーザーID</span>
+            <input class="input" type="text" id="site-username" placeholder="octocat" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span class="field-label">PAT (Personal Access Token)</span>
+            <input class="input" type="password" id="site-token" placeholder="ghp_xxxxxxxx" autocomplete="new-password" />
+          </label>
+          <p class="field-hint">
+            HTTPS リモートの clone / pull / push に使用します。repo スコープの PAT を指定してください。<br />
+            PAT はサーバー側 (data/credentials.json) に保存され、ブラウザには表示されません。
+          </p>
+        </fieldset>
         <p class="dialog-error" id="site-error" hidden></p>
         <div class="dialog-actions">
           <button type="button" class="btn" id="btn-site-cancel">キャンセル</button>

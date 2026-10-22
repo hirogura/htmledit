@@ -11,7 +11,8 @@
     path: null,
     status: null,
     version: null,
-    collapsed: {}
+    collapsed: {},
+    editingSiteId: null
   };
 
   var el = {};
@@ -231,6 +232,25 @@
       name.title = site.url;
       item.appendChild(name);
 
+      if (site.hasToken) {
+        var badge = document.createElement("span");
+        badge.className = "site-item-badge";
+        badge.textContent = "PAT";
+        badge.title = "PAT 登録済み (" + (site.username || "認証情報あり") + ")";
+        item.appendChild(badge);
+      }
+
+      var auth = document.createElement("button");
+      auth.type = "button";
+      auth.className = "site-item-remove";
+      auth.textContent = "🔑";
+      auth.title = "認証情報 (ユーザーID / PAT) を編集";
+      auth.addEventListener("click", function (event) {
+        event.stopPropagation();
+        openCredentialDialog(site);
+      });
+      item.appendChild(auth);
+
       var remove = document.createElement("button");
       remove.type = "button";
       remove.className = "site-item-remove";
@@ -277,15 +297,66 @@
   }
 
   function openSiteDialog() {
+    state.editingSiteId = null;
+    el.siteDialogTitle.textContent = "サイトを追加";
+    el.btnSiteSubmit.textContent = "追加する";
     el.siteError.hidden = true;
     el.siteUrl.value = "";
+    el.siteUrl.disabled = false;
     el.siteBranch.value = "";
+    el.siteBranch.disabled = false;
     el.siteName.value = "";
+    el.siteUsername.value = "";
+    el.siteToken.value = "";
+    el.siteToken.placeholder = "ghp_xxxxxxxx";
     el.siteDialog.showModal();
     el.siteUrl.focus();
   }
 
+  function openCredentialDialog(site) {
+    state.editingSiteId = site.id;
+    el.siteDialogTitle.textContent = "認証情報を編集 - " + site.name;
+    el.btnSiteSubmit.textContent = "保存する";
+    el.siteError.hidden = true;
+    el.siteUrl.value = site.url;
+    el.siteUrl.disabled = true;
+    el.siteBranch.value = site.branch || "";
+    el.siteBranch.disabled = true;
+    el.siteName.value = site.name;
+    el.siteUsername.value = site.username || "";
+    el.siteToken.value = "";
+    el.siteToken.placeholder = site.hasToken ? "登録済み (空欄で変更なし)" : "ghp_xxxxxxxx";
+    el.siteDialog.showModal();
+    el.siteUsername.focus();
+  }
+
   function submitSiteDialog() {
+    var username = el.siteUsername.value.trim();
+    var token = el.siteToken.value.trim();
+
+    if (state.editingSiteId) {
+      busy(el.btnSiteSubmit, true);
+      el.btnSiteSubmit.disabled = true;
+      api("/api/sites/" + encodeURIComponent(state.editingSiteId), {
+        method: "PATCH",
+        body: { name: el.siteName.value.trim(), username: username, token: token }
+      })
+        .then(function (payload) {
+          el.siteDialog.close();
+          toast("認証情報を更新しました: " + payload.site.name, "success");
+          loadSites();
+        })
+        .catch(function (error) {
+          el.siteError.textContent = error.message;
+          el.siteError.hidden = false;
+        })
+        .finally(function () {
+          busy(el.btnSiteSubmit, false);
+          el.btnSiteSubmit.disabled = false;
+        });
+      return;
+    }
+
     var url = el.siteUrl.value.trim();
     if (!url) {
       el.siteError.textContent = "GitHub の URL を入力してください。";
@@ -299,7 +370,9 @@
       body: {
         url: url,
         branch: el.siteBranch.value.trim(),
-        name: el.siteName.value.trim()
+        name: el.siteName.value.trim(),
+        username: username,
+        token: token
       }
     })
       .then(function (payload) {
@@ -773,6 +846,9 @@
     el.siteUrl = $("site-url");
     el.siteBranch = $("site-branch");
     el.siteName = $("site-name");
+    el.siteUsername = $("site-username");
+    el.siteToken = $("site-token");
+    el.siteDialogTitle = $("site-dialog-title");
     el.siteError = $("site-error");
     el.btnSiteSubmit = $("btn-site-submit");
     el.btnSiteCancel = $("btn-site-cancel");

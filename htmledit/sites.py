@@ -192,7 +192,7 @@ class SiteRegistry:
                 index += 1
         return candidate
 
-    def add(self, url: str, branch: str = "", name: str = "") -> Site:
+    def add(self, url: str, branch: str = "", name: str = "", auth: gitcmd.Auth | None = None) -> Site:
         ref = parse_repo_url(url)
         branch = branch or ref.branch or ""
         site_id = self._unique_id(ref.slug)
@@ -204,9 +204,12 @@ class SiteRegistry:
         else:
             if dest.exists():
                 shutil.rmtree(dest)
-            result = gitcmd.clone(ref.url, dest, branch=branch)
+            result = gitcmd.clone(ref.url, dest, branch=branch, auth=auth)
             if not result.ok:
-                raise SiteError(f"clone に失敗しました: {result.stderr.strip() or result.stdout.strip()}")
+                message = (result.stderr or result.stdout).strip()
+                if auth is not None and auth.token and ("Authentication failed" in message or "could not read Username" in message):
+                    message = "認証に失敗しました。ユーザーID と PAT を確認してください。\n" + message
+                raise SiteError(f"clone に失敗しました: {message}")
 
         gitcmd.ensure_identity(dest)
         current = gitcmd.current_branch(dest)

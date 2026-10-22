@@ -94,8 +94,8 @@ class ApiTestCase(unittest.TestCase):
     def test_version(self):
         status, payload = self.request("GET", "/api/version")
         self.assertEqual(status, 200)
-        self.assertEqual(payload["version"], "0.1.0")
-        self.assertEqual(payload["label"], "v.0.1.0")
+        self.assertEqual(payload["version"], "0.2.0")
+        self.assertEqual(payload["label"], "v.0.2.0")
 
     def test_site_lifecycle(self):
         status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
@@ -164,6 +164,47 @@ class ApiTestCase(unittest.TestCase):
         )
         self.assertEqual(status, 400)
         self.request("DELETE", f"/api/sites/{site_id}", {})
+
+    def test_site_credentials(self):
+        status, payload = self.request(
+            "POST",
+            "/api/sites",
+            {"url": str(self.remote), "username": "octocat", "token": "ghp_dummy_token"},
+        )
+        self.assertEqual(status, 200, payload)
+        site = payload["site"]
+        self.assertEqual(site["username"], "octocat")
+        self.assertTrue(site["hasToken"])
+        self.assertNotIn("token", site)
+
+        credentials_file = Path(CONFIG.data_dir) / "credentials.json"
+        self.assertTrue(credentials_file.exists())
+        self.assertEqual(oct(credentials_file.stat().st_mode & 0o777), "0o600")
+
+        status, payload = self.request(
+            "PATCH", f"/api/sites/{site['id']}", {"username": "octocat2"}
+        )
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["site"]["username"], "octocat2")
+        self.assertTrue(payload["site"]["hasToken"])
+
+        status, payload = self.request("DELETE", f"/api/sites/{site['id']}", {})
+        self.assertEqual(status, 200, payload)
+        stored = json.loads(credentials_file.read_text("utf-8"))
+        self.assertNotIn(site["id"], stored.get("sites", {}))
+
+    def test_credential_helper_uses_site_token(self):
+        from htmledit import gitcmd
+
+        result = gitcmd.run_git(
+            ["credential", "fill"],
+            use_auth=True,
+            auth=gitcmd.Auth(username="octocat", token="ghp_test_token"),
+            stdin="protocol=https\nhost=github.com\n\n",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("username=octocat", result.stdout)
+        self.assertIn("password=ghp_test_token", result.stdout)
 
     def test_unknown_site(self):
         status, payload = self.request("GET", "/api/sites/nope/tree")

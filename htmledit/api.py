@@ -10,6 +10,7 @@ from pathlib import Path
 
 from . import github, gitcmd, selfservice, sites
 from .config import APP_ROOT, CONFIG
+from .credentials import STORE as CREDENTIALS
 from .sites import REGISTRY, SiteError
 
 
@@ -87,6 +88,18 @@ def _site(site_id: str) -> sites.Site:
         raise ApiError(404, str(exc)) from exc
 
 
+def _site_auth(site_id: str) -> gitcmd.Auth:
+    """サイトに登録された認証情報 (ユーザーID / PAT) を返す."""
+    creds = CREDENTIALS.get(site_id)
+    return gitcmd.Auth(username=creds.username, token=creds.token)
+
+
+def _site_payload(site: sites.Site) -> dict:
+    data = site.to_dict()
+    data.update(CREDENTIALS.get(site.id).to_public())
+    return data
+
+
 def _require_repo(site: sites.Site) -> None:
     if not gitcmd.is_git_repo(site.path):
         raise ApiError(409, f"サイト '{site.id}' のローカルリポジトリが見つかりません。")
@@ -143,7 +156,7 @@ def self_restart(_request: Request, _params: dict) -> dict:
 
 @route("GET", r"/api/sites")
 def list_sites(_request: Request, _params: dict) -> dict:
-    return {"sites": [site.to_dict() for site in REGISTRY.list()]}
+    return {"sites": [_site_payload(site) for site in REGISTRY.list()]}
 
 
 @route("POST", r"/api/sites")
@@ -154,23 +167,32 @@ def add_site(request: Request, _params: dict) -> dict:
         raise ApiError(400, "GitHub の URL を入力してください。")
     branch = str(payload.get("branch", "")).strip()
     name = str(payload.get("name", "")).strip()
+    username = str(payload.get("username", "")).strip()
+    token = str(payload.get("token", "")).strip()
+    auth = gitcmd.Auth(username=username, token=token)
     try:
-        site = REGISTRY.add(url, branch=branch, name=name)
+        site = REGISTRY.add(url, branch=branch, name=name, auth=auth)
     except SiteError as exc:
         raise ApiError(400, str(exc)) from exc
     except gitcmd.GitError as exc:
         raise ApiError(500, str(exc)) from exc
-    return {"site": site.to_dict()}
+    if username or token:
+        CREDENTIALS.set(site.id, username, token)
+    return {"site": _site_payload(site)}
 
 
 @route("PATCH", r"/api/sites/(?P<site_id>[^/]+)")
 def update_site(request: Request, params: dict) -> dict:
     payload = request.json()
+    site = _site(params["site_id"])
     name = str(payload.get("name", "")).strip()
-    if not name:
-        raise ApiError(400, "サイト名を空にはできません。")
-    site = REGISTRY.rename(params["site_id"], name)
-    return {"site": site.to_dict()}
+    if name:
+        site = REGISTRY.rename(site.id, name)
+    username = str(payload.get("username", "")).strip()
+    token = str(payload.get("token", "")).strip()
+    if username or token:
+        CREDENTIALS.set(site.id, username, token)
+    return {"site": _site_payload(site)}
 
 
 @route("DELETE", r"/api/sites/(?P<site_id>[^/]+)")
@@ -178,6 +200,7 @@ def delete_site(request: Request, params: dict) -> dict:
     payload = request.json() if request.body else {}
     keep_clone = bool(payload.get("keepClone"))
     site = REGISTRY.remove(params["site_id"], delete_clone=not keep_clone)
+    CREDENTIALS.delete(site.id)
     return {"removed": site.id}
 
 
@@ -262,7 +285,7 @@ def git_pull(_request: Request, params: dict) -> dict:
     site = _site(params["site_id"])
     _require_repo(site)
     try:
-        result = gitcmd.pull(site.path)
+        result = gitcmd.pull(site.path, auth=_site_auth(site.id))
     except gitcmd.GitError as exc:
         raise ApiError(500, str(exc)) from exc
     if not result.ok:
@@ -298,7 +321,7 @@ def git_push(request: Request, params: dict) -> dict:
     branch = str(payload.get("branch", "")).strip()
     set_upstream = bool(payload.get("setUpstream"))
     try:
-        result = gitcmd.push(site.path, branch=branch, set_upstream=set_upstream)
+        result = gitcmd.push(site.path, branch=branch, set_upstream=set_upstream, auth=_site_auth(site.id))
     except gitcmd.GitError as exc:
         raise ApiError(500, str(exc)) from exc
     if not result.ok:
