@@ -878,6 +878,81 @@ textarea.input {
   margin: 0;
 }
 
+/* 保存済み画像のサムネイル一覧 */
+.image-gallery {
+  margin: 0 0 10px;
+}
+
+.image-gallery-title {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.image-gallery-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.image-gallery-head .image-gallery-title {
+  flex: 1 1 auto;
+  margin-bottom: 0;
+}
+
+.image-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.image-gallery-status {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.thumb {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-alt);
+  padding: 3px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+  font-family: inherit;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.thumb:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.thumb-image {
+  width: 100%;
+  height: 58px;
+  object-fit: cover;
+  display: block;
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.thumb-name {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
 .wysiwyg-host.is-drop-target {
   background: var(--accent-soft);
   box-shadow: inset 0 0 0 2px var(--accent);

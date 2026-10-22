@@ -1321,18 +1321,24 @@
     var src = image.getAttribute("src") || "";
     var parentLink = editor.closestElement(image.parentElement, "A");
 
-    section.appendChild(
-      propRow("画像 URL", propInput(src, function (value) {
-        image.setAttribute("src", value);
-        editor.notifyChange();
-      }))
-    );
-    section.appendChild(
-      propRow("代替テキスト (alt)", propInput(image.getAttribute("alt") || "", function (value) {
-        image.setAttribute("alt", value);
-        editor.notifyChange();
-      }))
-    );
+    var resolved = document.createElement("input");
+    resolved.className = "input";
+    resolved.type = "text";
+    resolved.readOnly = true;
+    resolved.value = image.src || "";
+    resolved.title = "エディター内で解決される URL";
+
+    var urlInput = propInput(src, function (value) {
+      image.setAttribute("src", value);
+      editor.notifyChange();
+    });
+    var altInput = propInput(image.getAttribute("alt") || "", function (value) {
+      image.setAttribute("alt", value);
+      editor.notifyChange();
+    });
+    section.appendChild(propRow("画像 URL", urlInput));
+    section.appendChild(buildImageGallery(image, { url: urlInput, alt: altInput, resolved: resolved }));
+    section.appendChild(propRow("代替テキスト (alt)", altInput));
     section.appendChild(
       propRow("幅 (px)", propInput(image.getAttribute("width") || "", function (value) {
         if (value) {
@@ -1363,12 +1369,6 @@
         editor.notifyChange();
       }))
     );
-    var resolved = document.createElement("input");
-    resolved.className = "input";
-    resolved.type = "text";
-    resolved.readOnly = true;
-    resolved.value = image.src || "";
-    resolved.title = "エディター内で解決される URL";
     section.appendChild(propRow("解決後の URL", resolved));
     section.appendChild(
       propCheck(!!parentLink, "画像をクリック時にリンクを開く", function (checked) {
@@ -1436,6 +1436,170 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* 保存済みの画像 (public/images) のサムネイル                          */
+  /* ------------------------------------------------------------------ */
+  var ASSET_PREFIX = "public/images";
+  var PLACEHOLDER_ALT = "画像";
+  var assetCache = { key: "", promise: null };
+
+  function assetCacheKey() {
+    return (state.siteId || "") + "|" + (state.path || "");
+  }
+
+  function invalidateAssetImages() {
+    assetCache.key = "";
+    assetCache.promise = null;
+  }
+
+  function loadAssetImages(force) {
+    var siteId = state.siteId;
+    if (!siteId) {
+      return Promise.resolve([]);
+    }
+    var key = assetCacheKey();
+    if (!force && assetCache.key === key && assetCache.promise) {
+      return assetCache.promise;
+    }
+    var query =
+      "?prefix=" + encodeURIComponent(ASSET_PREFIX) + "&page=" + encodeURIComponent(state.path || "");
+    assetCache.key = key;
+    assetCache.promise = api("/api/sites/" + encodeURIComponent(siteId) + "/assets" + query)
+      .then(function (payload) {
+        return payload.images || [];
+      })
+      .catch(function (error) {
+        assetCache.promise = null;
+        throw error;
+      });
+    return assetCache.promise;
+  }
+
+  /* サイト内のファイルを配信する URL (サムネイル用) */
+  function siteFileUrl(path) {
+    var parts = String(path || "")
+      .split("/")
+      .map(function (part) {
+        return encodeURIComponent(part);
+      });
+    return "/site/" + encodeURIComponent(state.siteId || "") + "/" + parts.join("/");
+  }
+
+  function buildImageGallery(image, controls) {
+    var wrap = document.createElement("div");
+    wrap.className = "image-gallery";
+
+    var head = document.createElement("div");
+    head.className = "image-gallery-head";
+    var title = document.createElement("div");
+    title.className = "image-gallery-title";
+    title.textContent = "保存済みの画像 (" + ASSET_PREFIX + ")";
+    head.appendChild(title);
+    var refresh = document.createElement("button");
+    refresh.type = "button";
+    refresh.className = "btn btn-sm";
+    refresh.textContent = "更新";
+    refresh.title = "保存済みの画像の一覧を再読み込み";
+    head.appendChild(refresh);
+    wrap.appendChild(head);
+
+    var grid = document.createElement("div");
+    grid.className = "image-gallery-grid";
+    wrap.appendChild(grid);
+
+    var status = document.createElement("div");
+    status.className = "image-gallery-status";
+    status.textContent = "読み込み中…";
+    wrap.appendChild(status);
+
+    var paint = function (images) {
+      grid.innerHTML = "";
+      if (!images.length) {
+        status.hidden = false;
+        status.textContent = "保存済みの画像はありません (" + ASSET_PREFIX + " を確認してください)";
+        return;
+      }
+      status.hidden = true;
+      images.forEach(function (asset) {
+        grid.appendChild(buildThumbnail(asset, image, controls));
+      });
+    };
+
+    var failed = function (error) {
+      grid.innerHTML = "";
+      status.hidden = false;
+      status.textContent = "画像の読み込みに失敗しました: " + error.message;
+    };
+
+    refresh.addEventListener("click", function () {
+      status.hidden = false;
+      status.textContent = "読み込み中…";
+      loadAssetImages(true).then(paint).catch(failed);
+    });
+
+    loadAssetImages(false).then(paint).catch(failed);
+
+    return wrap;
+  }
+
+  function buildThumbnail(asset, image, controls) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "thumb";
+    button.title = asset.path + "\n保存日時: " + formatDate(asset.modified);
+
+    var preview = document.createElement("img");
+    preview.className = "thumb-image";
+    preview.src = siteFileUrl(asset.path);
+    preview.alt = asset.name || "";
+    preview.loading = "lazy";
+    button.appendChild(preview);
+
+    var caption = document.createElement("span");
+    caption.className = "thumb-name";
+    caption.textContent = asset.name || "";
+    button.appendChild(caption);
+
+    button.addEventListener("click", function () {
+      var value = asset.reference || asset.path;
+      image.setAttribute("src", value);
+      if (controls.url) {
+        controls.url.value = value;
+      }
+      if (controls.resolved) {
+        controls.resolved.value = image.src;
+      }
+      if (controls.alt && image.getAttribute("alt") === PLACEHOLDER_ALT) {
+        // 挿入時の仮の alt は不要なので取り除く
+        image.removeAttribute("alt");
+        controls.alt.value = "";
+      }
+      editor.notifyChange();
+      toast("画像を選択しました: " + value, "success");
+    });
+    return button;
+  }
+
+  /* ツールバーの「画像」ボタン: 画像要素を挿入して保存済みの画像から選ばせる. */
+  function insertImageFromLibrary() {
+    if (!state.siteId) {
+      toast("先にサイトを追加してください。", "warn");
+      return;
+    }
+    // 一覧を最新の状態で取得してから挿入する (直前にアップロードした画像も反映される)
+    loadAssetImages(true).catch(function () {
+      /* エラーはサムネイル欄の表示に任せる */
+    });
+    var image = editor.insertImageElement(' alt="' + PLACEHOLDER_ALT + '"');
+    if (!image) {
+      toast("画像要素を挿入できませんでした。", "error");
+      return;
+    }
+    editor.selectImage(image);
+    togglePane("prop", true);
+    editor.setStatus("保存済みの画像 (" + ASSET_PREFIX + ") から選んでください");
+  }
+
+  /* ------------------------------------------------------------------ */
   /* 画像のドラッグ＆ドロップ                                            */
   /* ------------------------------------------------------------------ */
   function onDropSiteFile(path) {
@@ -1457,6 +1621,7 @@
         if (payload.ignored) {
           toast("警告: " + payload.path + " は .gitignore によりコミットされません。", "warn");
         }
+        invalidateAssetImages();
         refreshTree();
       })
       .catch(function (error) {
@@ -1502,6 +1667,7 @@
           if (payload.ignored) {
             toast("警告: " + payload.path + " は .gitignore によりコミットされません。", "warn");
           }
+          invalidateAssetImages();
           refreshTree();
         })
         .catch(function (error) {
@@ -1856,6 +2022,9 @@
       },
       onUploadImage: function (file) {
         uploadImage(file);
+      },
+      onInsertImage: function () {
+        insertImageFromLibrary();
       }
     });
 

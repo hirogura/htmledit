@@ -11,6 +11,7 @@ import threading
 import time
 import zipfile
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -504,3 +505,37 @@ def save_upload(site: Site, filename: str, data: bytes, page: str = "") -> dict:
         "reference": _reference(root, target_path, page),
         "size": len(data),
     }
+
+
+def list_images(site: Site, prefix: str = "public/images", page: str = "") -> list[dict]:
+    """指定フォルダ以下の画像を保存日の新しい順に返す (サムネイル用)."""
+    root = Path(os.path.realpath(site.path))
+    folder = resolve_path(site, prefix)
+    if not folder.is_dir():
+        return []
+
+    found: list[tuple[float, str, dict]] = []
+    for target in folder.rglob("*"):
+        if not target.is_file() or target.suffix.lower() not in IMAGE_EXTENSIONS:
+            continue
+        try:
+            stat = target.stat()
+            relative = target.relative_to(root).as_posix()
+        except (OSError, ValueError):
+            continue
+        found.append(
+            (
+                stat.st_mtime,
+                relative,
+                {
+                    "name": target.name,
+                    "path": relative,
+                    "reference": _reference(root, target, page),
+                    "size": stat.st_size,
+                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+                },
+            )
+        )
+    # 保存日 (更新日時) の新しい順に並べる
+    found.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return [item[2] for item in found]

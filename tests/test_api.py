@@ -327,6 +327,51 @@ class ApiTestCase(unittest.TestCase):
 
         self.request("DELETE", f"/api/sites/{site_id}", {})
 
+    def test_list_assets(self):
+        status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
+        site_id = payload["site"]["id"]
+        repo = Path(CONFIG.data_dir) / "repos" / site_id
+
+        # public/images 以下に画像を作成する
+        images_dir = repo / "public" / "images" / "2026" / "10" / "22"
+        images_dir.mkdir(parents=True, exist_ok=True)
+        old = images_dir / "old.png"
+        new = images_dir / "new.png"
+        old.write_bytes(b"\x89PNG\r\n\x1a\n")
+        new.write_bytes(b"\x89PNG\r\n\x1a\n")
+        (images_dir / "note.txt").write_text("not an image", "utf-8")
+        os.utime(old, (1000000, 1000000))
+        os.utime(new, (2000000, 2000000))
+
+        status, payload = self.request("GET", f"/api/sites/{site_id}/assets?page=index.html")
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["prefix"], "public/images")
+        paths = [item["path"] for item in payload["images"]]
+        # 保存日が新しい順に並ぶ
+        self.assertEqual(
+            paths,
+            ["public/images/2026/10/22/new.png", "public/images/2026/10/22/old.png"],
+        )
+        # 画像以外は含まれない
+        self.assertNotIn("public/images/2026/10/22/note.txt", paths)
+
+        item = payload["images"][0]
+        self.assertEqual(item["name"], "new.png")
+        self.assertEqual(item["reference"], "public/images/2026/10/22/new.png")
+        self.assertTrue(item["modified"])
+
+        # サブディレクトリのページからは相対パスになる
+        status, payload = self.request("GET", f"/api/sites/{site_id}/assets?page=sub/page.html")
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["images"][0]["reference"], "../public/images/2026/10/22/new.png")
+
+        # 画像が無いフォルダは空
+        status, payload = self.request("GET", f"/api/sites/{site_id}/assets?prefix=public/empty")
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["images"], [])
+
+        self.request("DELETE", f"/api/sites/{site_id}", {})
+
     def test_site_file_serving(self):
         status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
         site_id = payload["site"]["id"]

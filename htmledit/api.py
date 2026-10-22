@@ -367,6 +367,19 @@ def download_site_file(request: Request, params: dict) -> RawResponse:
     )
 
 
+@route("GET", r"/api/sites/(?P<site_id>[^/]+)/assets")
+def list_assets(request: Request, params: dict) -> dict:
+    """保存済みの画像 (既定は public/images) を保存日の新しい順に返す."""
+    site = _site(params["site_id"])
+    prefix = request.q("prefix", "public/images").strip() or "public/images"
+    page = request.q("page", "")
+    try:
+        images = sites.list_images(site, prefix=prefix, page=page)
+    except SiteError as exc:
+        raise ApiError(400, str(exc)) from exc
+    return {"ok": True, "prefix": prefix, "images": images}
+
+
 @route("POST", r"/api/sites/(?P<site_id>[^/]+)/assets")
 def copy_asset(request: Request, params: dict) -> dict:
     """サイドバーからドロップした画像などを日付付きフォルダへ取り込む."""

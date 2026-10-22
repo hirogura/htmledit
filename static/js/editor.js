@@ -90,6 +90,7 @@
     this.onDropSiteFile = options.onDropSiteFile || function () {};
     this.onDropUnsupported = options.onDropUnsupported || function () {};
     this.onUploadImage = options.onUploadImage || function () {};
+    this.onInsertImage = options.onInsertImage || null;
 
     this.mode = "wysiwyg";
     this.path = "";
@@ -141,6 +142,10 @@
           self.saveSelection();
         });
         button.addEventListener("click", function () {
+          if (item.command === "insertImage" && self.onInsertImage) {
+            self.onInsertImage();
+            return;
+          }
           self.execCommand(item.command);
         });
         fragment.appendChild(button);
@@ -254,6 +259,7 @@
       image: this.selectedImage || null,
       text: this.selectedText()
     };
+    this.updateSelectionClasses();
     if (this.onSelection) {
       this.onSelection(info);
     }
@@ -317,7 +323,54 @@
     if (alt) {
       attrs += ' alt="' + escapeAttribute(alt) + '"';
     }
-    this.insertHtmlAtCaret("<img" + attrs + ">");
+    return this.insertImageElement(attrs);
+  };
+
+  /* キャレット位置に <img> を挿入し、挿入された要素を返す. */
+  Editor.prototype.insertImageElement = function (attrs) {
+    var known = [];
+    var before = this.host.querySelectorAll("img");
+    for (var i = 0; i < before.length; i++) {
+      known.push(before[i]);
+    }
+    this.insertHtmlAtCaret("<img" + (attrs || "") + ">");
+    var images = this.host.querySelectorAll("img");
+    var inserted = null;
+    for (var j = 0; j < images.length; j++) {
+      if (known.indexOf(images[j]) === -1) {
+        inserted = images[j];
+      }
+    }
+    if (!inserted) {
+      // カーソルがエディターの外にある場合は末尾へ追加する
+      var holder = document.createElement("div");
+      holder.innerHTML = "<img" + (attrs || "") + ">";
+      inserted = holder.firstChild;
+      if (inserted) {
+        this.host.appendChild(inserted);
+      }
+    }
+    return inserted;
+  };
+
+  /* 画像を明示的に選択し、プロパティ表示を更新する. */
+  Editor.prototype.selectImage = function (image) {
+    this.selectedImage = image || null;
+    this.selectedLink = image ? this.closestElement(image.parentElement, "A") : null;
+    this.emitSelection();
+  };
+
+  Editor.prototype.updateSelectionClasses = function () {
+    var images = this.host.querySelectorAll("img");
+    for (var i = 0; i < images.length; i++) {
+      images[i].classList.toggle("is-selected", images[i] === this.selectedImage);
+    }
+    this.host.classList.toggle("is-image-selected", !!this.selectedImage);
+    var links = this.host.querySelectorAll("a");
+    for (var j = 0; j < links.length; j++) {
+      links[j].classList.toggle("is-selected", links[j] === this.selectedLink);
+    }
+    this.host.classList.toggle("is-link-selected", !!this.selectedLink);
   };
 
   Editor.prototype._bindDrop = function () {
