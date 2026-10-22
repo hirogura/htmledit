@@ -1229,7 +1229,7 @@
       return;
     }
     state.opencodeStarted = true;
-    el.terminalPanel.classList.remove("is-hidden");
+    el.terminalPane.classList.remove("is-hidden");
     el.btnOpencode.classList.add("is-active");
     terminalPanel.show();
     terminalPanel.connect(state.siteId, "opencode");
