@@ -13,7 +13,7 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.0.6.0</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.0.7.0</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
@@ -66,6 +66,18 @@
         <div class="statusbar" id="editor-status">準備完了</div>
       </section>
 
+      <aside class="pane terminal-pane is-hidden" id="terminal-pane">
+        <div class="pane-head">
+          <h2 class="pane-title">ターミナル</h2>
+          <span class="terminal-cwd" id="terminal-cwd"></span>
+          <div class="pane-head-actions">
+            <button type="button" class="btn btn-sm" id="btn-terminal-opencode" title="opencode を起動する">opencode 起動</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-terminal-close" title="閉じる">×</button>
+          </div>
+        </div>
+        <div class="terminal-host" id="terminal"></div>
+      </aside>
+
       <aside class="pane prop-pane" id="prop-pane">
         <div class="pane-head">
           <h2 class="pane-title">プロパティ</h2>
@@ -115,35 +127,20 @@
           </section>
         </div>
       </aside>
-    </main>
 
-    <section class="bottom-panel" id="bottom-panel">
-      <div class="bottom-body">
-        <div class="memo-panel" id="memo-panel">
-          <div class="pane-head">
-            <h2 class="pane-title">メモ</h2>
-            <span class="memo-path" id="memo-path"></span>
-            <div class="bottom-actions">
-              <button type="button" class="btn btn-sm btn-primary" id="btn-memo-save">保存</button>
-              <button type="button" class="btn btn-ghost btn-sm" id="btn-memo-close" title="閉じる">×</button>
-            </div>
+      <aside class="pane memo-pane is-hidden" id="memo-pane">
+        <div class="pane-head">
+          <h2 class="pane-title">メモ</h2>
+          <span class="memo-path" id="memo-path"></span>
+          <div class="pane-head-actions">
+            <button type="button" class="btn btn-sm btn-primary" id="btn-memo-save">保存</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-memo-close" title="閉じる">×</button>
           </div>
-          <textarea class="memo-text" id="memo-text" spellcheck="false" placeholder="メモを記入すると /opt/htmledit/memo/memo.md に保存されます"></textarea>
-          <div class="memo-status" id="memo-status"></div>
         </div>
-        <div class="terminal-panel" id="terminal-panel">
-          <div class="pane-head">
-            <h2 class="pane-title">ターミナル</h2>
-            <span class="terminal-cwd" id="terminal-cwd"></span>
-            <div class="bottom-actions">
-              <button type="button" class="btn btn-sm" id="btn-terminal-opencode" title="opencode を起動する">opencode 起動</button>
-              <button type="button" class="btn btn-ghost btn-sm" id="btn-terminal-close" title="閉じる">×</button>
-            </div>
-          </div>
-          <div class="terminal-host" id="terminal"></div>
-        </div>
-      </div>
-    </section>
+        <textarea class="memo-text" id="memo-text" spellcheck="false" placeholder="メモを記入すると /opt/htmledit/memo/memo.md に保存されます"></textarea>
+        <div class="memo-status" id="memo-status"></div>
+      </aside>
+    </main>
 
     <dialog class="dialog" id="site-dialog">
       <form method="dialog" class="dialog-form" id="site-form">

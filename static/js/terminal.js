@@ -15,10 +15,12 @@
     this.fitAddon = null;
     this.siteId = "";
     this.sessionId = "htmledit-" + Math.random().toString(36).slice(2, 10);
-    this._initTerm();
   }
 
   TerminalPanel.prototype._initTerm = function () {
+    if (this.term) {
+      return;
+    }
     if (!window.Terminal) {
       this.host.textContent = "xterm.js を読み込めませんでした。";
       return;
@@ -48,6 +50,15 @@
     window.addEventListener("resize", function () {
       self.fit();
     });
+  };
+
+  /* パネルが表示されている状態で初期化する (寸法が分かる状態で開く必要がある) */
+  TerminalPanel.prototype.show = function () {
+    this._initTerm();
+    var self = this;
+    setTimeout(function () {
+      self.fit();
+    }, 30);
   };
 
   TerminalPanel.prototype.fit = function () {

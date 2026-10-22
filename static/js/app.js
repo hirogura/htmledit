@@ -12,7 +12,8 @@
     status: null,
     version: null,
     collapsed: {},
-    editingSiteId: null
+    editingSiteId: null,
+    opencodeStarted: false
   };
 
   var el = {};
@@ -275,7 +276,7 @@
     renderSites();
     refreshTree();
     refreshGit();
-    if (terminalPanel && el.terminalPanel.classList.contains("is-open")) {
+    if (terminalPanel && el.terminalPane && !el.terminalPane.classList.contains("is-hidden")) {
       terminalPanel.connect(siteId);
       var site = currentSite();
       el.terminalCwd.textContent = site ? site.url : "";
@@ -1180,34 +1181,12 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* 下部パネル (メモ / ターミナル)                                       */
+  /* メモ / ターミナル                                                    */
   /* ------------------------------------------------------------------ */
   var terminalPanel = null;
-  var memoLoaded = false;
-
-  function isBottomOpen() {
-    return el.workspace.classList.contains("has-bottom");
-  }
-
-  function syncBottomPanel() {
-    var memoOpen = el.memoPanel.classList.contains("is-open");
-    var termOpen = el.terminalPanel.classList.contains("is-open");
-    el.workspace.classList.toggle("has-bottom", memoOpen || termOpen);
-    el.btnToggleMemo.classList.toggle("is-active", memoOpen);
-    if (termOpen && terminalPanel) {
-      setTimeout(function () {
-        terminalPanel.fit();
-      }, 60);
-    }
-  }
 
   function toggleMemo(force) {
-    var open = force === undefined ? !el.memoPanel.classList.contains("is-open") : force;
-    el.memoPanel.classList.toggle("is-open", open);
-    if (open) {
-      loadMemo();
-    }
-    syncBottomPanel();
+    togglePane("memo", force);
   }
 
   function loadMemo() {
@@ -1216,7 +1195,6 @@
         el.memoText.value = payload.content || "";
         el.memoPath.textContent = payload.path;
         el.memoStatus.textContent = payload.exists ? "読み込みました" : "新規メモです";
-        memoLoaded = true;
       })
       .catch(function (error) {
         el.memoStatus.textContent = "メモの読み込みに失敗しました: " + error.message;
@@ -1240,29 +1218,21 @@
   }
 
   function openTerminal() {
-    el.terminalPanel.classList.add("is-open");
-    syncBottomPanel();
-    if (terminalPanel) {
-      terminalPanel.connect(state.siteId);
-      var site = currentSite();
-      el.terminalCwd.textContent = site ? site.url : "";
-    }
-  }
-
-  function toggleTerminal(force) {
-    var open = force === undefined ? !el.terminalPanel.classList.contains("is-open") : force;
-    el.terminalPanel.classList.toggle("is-open", open);
-    if (open) {
-      openTerminal();
-    }
-    syncBottomPanel();
+    togglePane("terminal", true);
+    var site = currentSite();
+    el.terminalCwd.textContent = site ? site.url : "";
   }
 
   /* ------------------------------------------------------------------ */
   /* opencode (AI)                                                        */
   /* ------------------------------------------------------------------ */
   function openOpencode() {
+    var wasHidden = el.terminalPane.classList.contains("is-hidden");
     openTerminal();
+    if (!wasHidden && state.opencodeStarted) {
+      toast("opencode は起動済みです。ターミナルを操作してください。", "info");
+      return;
+    }
     api("/api/opencode/status")
       .then(function (status) {
         if (status.installed) {
@@ -1275,11 +1245,11 @@
         toast("opencode の確認に失敗しました: " + error.message, "error");
       });
   }
-
   function startOpencode() {
     if (!terminalPanel) {
       return;
     }
+    state.opencodeStarted = true;
     terminalPanel.write("\r\n\x1b[36m[htmledit] opencode を起動します...\x1b[0m\r\n");
     terminalPanel.run("opencode");
   }
@@ -1328,19 +1298,35 @@
   /* ------------------------------------------------------------------ */
   /* パネルの表示 / 非表示の切り替え                                      */
   /* ------------------------------------------------------------------ */
-  function togglePane(name) {
-    var pane = name === "prop" ? el.propPane : el.gitPane;
-    var button = name === "prop" ? el.btnToggleProp : el.btnToggleGit;
-    var hidden = pane.classList.toggle("is-hidden");
-    if (name === "prop") {
-      el.workspace.classList.toggle("is-prop-hidden", hidden);
-    } else {
-      el.workspace.classList.toggle("is-git-hidden", hidden);
+  var PANELS = {
+    prop: { pane: "propPane", button: "btnToggleProp", label: "プロパティパネル" },
+    git: { pane: "gitPane", button: "btnToggleGit", label: "GitHub パネル" },
+    terminal: { pane: "terminalPane", button: "btnOpencode", label: "ターミナルパネル" },
+    memo: { pane: "memoPane", button: "btnToggleMemo", label: "メモパネル" }
+  };
+
+  function togglePane(name, force) {
+    var config = PANELS[name];
+    if (!config) {
+      return;
     }
+    var pane = el[config.pane];
+    var button = el[config.button];
+    var hidden = force === undefined ? !pane.classList.contains("is-hidden") : !force;
+    pane.classList.toggle("is-hidden", hidden);
     button.classList.toggle("is-active", !hidden);
     button.setAttribute("aria-pressed", hidden ? "false" : "true");
-    button.title = (hidden ? "表示する" : "非表示にする") + " - " +
-      (name === "prop" ? "プロパティパネル" : "GitHub パネル");
+    button.title = (hidden ? "表示する" : "非表示にする") + " - " + config.label;
+    if (name === "memo" && !hidden) {
+      loadMemo();
+    }
+    if (name === "terminal" && !hidden && terminalPanel) {
+      terminalPanel.show();
+      terminalPanel.connect(state.siteId);
+    }
+    if (name === "terminal" && hidden && terminalPanel) {
+      terminalPanel.disconnect();
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -1386,7 +1372,7 @@
       toggleMemo(false);
     });
     el.btnTerminalClose.addEventListener("click", function () {
-      toggleTerminal(false);
+      togglePane("terminal", false);
     });
     el.btnTerminalOpencode.addEventListener("click", function () {
       openOpencode();
@@ -1466,8 +1452,8 @@
     el.workspace = $("workspace");
     el.propPane = $("prop-pane");
     el.gitPane = $("git-pane");
-    el.memoPanel = $("memo-panel");
-    el.terminalPanel = $("terminal-panel");
+    el.memoPane = $("memo-pane");
+    el.terminalPane = $("terminal-pane");
     el.memoText = $("memo-text");
     el.memoPath = $("memo-path");
     el.memoStatus = $("memo-status");
