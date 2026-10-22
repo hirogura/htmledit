@@ -1223,20 +1223,29 @@
     el.terminalCwd.textContent = site ? site.url : "";
   }
 
+  /* opencode を PTY の子プロセスとして直接起動する (selfcode と同じ方式) */
+  function startOpencodeProcess() {
+    if (!terminalPanel) {
+      return;
+    }
+    state.opencodeStarted = true;
+    el.terminalPanel.classList.remove("is-hidden");
+    el.btnOpencode.classList.add("is-active");
+    terminalPanel.show();
+    terminalPanel.connect(state.siteId, "opencode");
+    var site = currentSite();
+    el.terminalCwd.textContent = site ? site.url : "";
+  }
+
   /* ------------------------------------------------------------------ */
   /* opencode (AI)                                                        */
   /* ------------------------------------------------------------------ */
   function openOpencode() {
-    var wasHidden = el.terminalPane.classList.contains("is-hidden");
     openTerminal();
-    if (!wasHidden && state.opencodeStarted) {
-      toast("opencode は起動済みです。ターミナルを操作してください。", "info");
-      return;
-    }
     api("/api/opencode/status")
       .then(function (status) {
         if (status.installed) {
-          startOpencode();
+          startOpencodeProcess();
         } else {
           installOpencode();
         }
@@ -1252,6 +1261,14 @@
     state.opencodeStarted = true;
     terminalPanel.write("\r\n\x1b[36m[htmledit] opencode を起動します...\x1b[0m\r\n");
     terminalPanel.run("opencode");
+  }
+
+  /* opencode のインストール完了後にターミナルで起動する */
+  function startOpencodeAfterInstall() {
+    if (!terminalPanel) {
+      return;
+    }
+    startOpencodeProcess();
   }
 
   function installOpencode() {
@@ -1283,7 +1300,7 @@
           if (status.installed) {
             toast("opencode のインストールが完了しました", "success");
             terminalPanel.write("\r\n\x1b[32m[htmledit] インストールが完了しました\x1b[0m\r\n");
-            startOpencode();
+            startOpencodeAfterInstall();
           } else {
             toast("opencode のインストールに失敗しました", "error");
             terminalPanel.write("\r\n\x1b[31m[htmledit] インストールに失敗しました\x1b[0m\r\n");
@@ -1325,7 +1342,7 @@
       terminalPanel.connect(state.siteId);
     }
     if (name === "terminal" && hidden && terminalPanel) {
-      terminalPanel.disconnect();
+      terminalPanel.kill();
     }
   }
 
@@ -1375,7 +1392,26 @@
       togglePane("terminal", false);
     });
     el.btnTerminalOpencode.addEventListener("click", function () {
-      openOpencode();
+      api("/api/opencode/status")
+        .then(function (status) {
+          if (status.installed) {
+            startOpencodeProcess();
+          } else {
+            openTerminal();
+            installOpencode();
+          }
+        })
+        .catch(function (error) {
+          toast("opencode の確認に失敗しました: " + error.message, "error");
+        });
+    });
+    el.btnTerminalShell.addEventListener("click", function () {
+      state.opencodeStarted = false;
+      if (!terminalPanel) {
+        return;
+      }
+      terminalPanel.kill();
+      terminalPanel.connect(state.siteId, "");
     });
     el.memoText.addEventListener("keydown", function (event) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
@@ -1461,6 +1497,7 @@
     el.btnMemoClose = $("btn-memo-close");
     el.btnTerminalClose = $("btn-terminal-close");
     el.btnTerminalOpencode = $("btn-terminal-opencode");
+    el.btnTerminalShell = $("btn-terminal-shell");
     el.terminalCwd = $("terminal-cwd");
     el.terminalStatus = $("terminal-status");
 

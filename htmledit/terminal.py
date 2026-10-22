@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import pty
+import shlex
 import shutil
 import signal
 import subprocess
@@ -67,25 +68,39 @@ def terminal_env() -> dict[str, str]:
 
 
 class TerminalSession:
-    """1 つの bash セッション (PTY)."""
+    """1 つのセッション (PTY).
 
-    def __init__(self, session_id: str, cwd: str, cols: int = 120, rows: int = 35) -> None:
+    command を指定すると bash ではなくそのコマンドを直接起動する
+    (selfcode と同じ方式。TUI は PTY の子プロセスである方が安定する)。
+    """
+
+    def __init__(self, session_id: str, cwd: str, cols: int = 120, rows: int = 35, command: str = "") -> None:
         self.id = session_id
         self.cwd = cwd
+        self.command = command
         self.cols = cols
         self.rows = rows
         self.buffer = ""
         self.lock = threading.RLock()
         self.master_fd, slave_fd = pty.openpty()
         websocket.set_window_size(self.master_fd, cols, rows)
-        shell = shutil.which("bash") or "/bin/sh"
+        if command:
+            parts = shlex.split(command)
+            binary = parts[0]
+            args = parts[1:]
+            env = terminal_env()
+        else:
+            shell = shutil.which("bash") or "/bin/sh"
+            binary = shell
+            args = ["-i"]
+            env = terminal_env()
         self.process = subprocess.Popen(
-            [shell, "-i"],
+            [binary, *args],
             stdin=slave_fd,
             stdout=slave_fd,
             stderr=slave_fd,
             cwd=cwd,
-            env=terminal_env(),
+            env=env,
             start_new_session=True,
             close_fds=True,
         )
@@ -130,15 +145,15 @@ class TerminalManager:
         self._sessions: dict[str, TerminalSession] = {}
         self._lock = threading.RLock()
 
-    def get(self, session_id: str, cwd: str) -> TerminalSession:
+    def get(self, session_id: str, cwd: str, command: str = "") -> TerminalSession:
         with self._lock:
             session = self._sessions.get(session_id)
             if session is not None and session.process.poll() is None:
-                if session.cwd == cwd:
+                if session.cwd == cwd and session.command == command:
                     return session
-                # ディレクトリが変わったら作り直す (selfcode と同じ挙動)
+                # ディレクトリやコマンドが変わったら作り直す (selfcode と同じ挙動)
                 session.close()
-            session = TerminalSession(session_id, cwd)
+            session = TerminalSession(session_id, cwd, command=command)
             self._sessions[session_id] = session
             return session
 

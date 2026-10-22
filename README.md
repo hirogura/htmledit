@@ -134,14 +134,16 @@ public/images/2026/10/22/photo.png
 
 トップバーの「opencode」ボタンを押すと、**プロパティペインの左側**にターミナルパネルが開きます。
 
-- ターミナルは PTY 上の bash (xterm.js + WebSocket) で、選択中のサイトの
+- ターミナルは PTY 上のシェル (xterm.js + WebSocket) で、選択中のサイトの
   作業ディレクトリをカレントディレクトリにして起動します
   (AI がそのままサイトのファイルを編集できます)
 - トップバーの「opencode」ボタン、またはパネルの「opencode 起動」ボタンで
-  ターミナルに `opencode` コマンドを入力して AI アシスタントを起動します
+  `opencode` を **PTY の子プロセスとして直接起動**します (selfcode と同じ方式)
+- 「シェル」ボタンで bash に戻れます
 - opencode が未インストールの場合、自動で `curl -fsSL https://opencode.ai/install | bash`
   を実行してインストールします (進捗はターミナルに表示)
 - 接続中 / 接続済みの状態はターミナルパネルのヘッダーに表示されます
+- 出力はすべて JSON のテキストフレームで配信するため、xterm.js 側で確実に描画されます
 - opencode には AI プロバイダーの認証情報が必要です
   (`~/.local/share/opencode/auth.json` などの opencode 側の設定を使用します)
 

@@ -123,8 +123,8 @@ class ApiTestCase(unittest.TestCase):
     def test_version(self):
         status, payload = self.request("GET", "/api/version")
         self.assertEqual(status, 200)
-        self.assertEqual(payload["version"], "0.7.1")
-        self.assertEqual(payload["label"], "v.0.7.1")
+        self.assertEqual(payload["version"], "0.7.2")
+        self.assertEqual(payload["label"], "v.0.7.2")
 
     def test_site_lifecycle(self):
         status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
@@ -405,8 +405,81 @@ class ApiTestCase(unittest.TestCase):
                     break
                 buffer += chunk
             self.assertIn(b"htmledit-terminal-ok", buffer)
+
+            # 出力は JSON のテキストフレームで届いていること (バイナリだとブラウザで破棄される)
+            frames = self._decode_frames(buffer)
+            self.assertTrue(frames, "フレームが取得できません")
+            for opcode, data in frames:
+                self.assertEqual(opcode, 0x1, "テキストフレームopcode ではありません")
+                message = json.loads(data.decode("utf-8"))
+                self.assertEqual(message.get("type"), "data")
+                self.assertIsInstance(message.get("data"), str)
+            self.assertIn(
+                "htmledit-terminal-ok",
+                "".join(json.loads(data.decode("utf-8")).get("data", "") for _, data in frames),
+            )
         finally:
             sock.close()
+
+    def test_terminal_websocket_command(self):
+        """cmd パラメータでコマンドを直接起動できる (selfcode と同じ方式)."""
+        import base64
+        import time
+
+        port = self.port
+        key = base64.b64encode(os.urandom(16)).decode()
+        sock = socket.create_connection(("127.0.0.1", port), timeout=10)
+        try:
+            sock.sendall(
+                (
+                    f"GET /ws/terminal?id=cmd-session&cmd=echo%20htmledit-direct-ok HTTP/1.1\r\n"
+                    f"Host: 127.0.0.1:{port}\r\n"
+                    "Upgrade: websocket\r\n"
+                    "Connection: Upgrade\r\n"
+                    f"Sec-WebSocket-Key: {key}\r\n"
+                    "Sec-WebSocket-Version: 13\r\n\r\n"
+                ).encode()
+            )
+            response = sock.recv(4096)
+            self.assertIn(b"101 Switching Protocols", response)
+
+            sock.settimeout(10)
+            buffer = b""
+            deadline = time.time() + 10
+            while time.time() < deadline and b"htmledit-direct-ok" not in buffer:
+                try:
+                    chunk = sock.recv(65536)
+                except socket.timeout:
+                    break
+                if not chunk:
+                    break
+                buffer += chunk
+            frames = self._decode_frames(buffer)
+            text = "".join(json.loads(data.decode("utf-8")).get("data", "") for _, data in frames)
+            self.assertIn("htmledit-direct-ok", text)
+        finally:
+            sock.close()
+
+    def _decode_frames(self, buffer):
+        """WebSocket フレームを (opcode, payload) のリストに分解する."""
+        frames = []
+        index = 0
+        while index + 2 <= len(buffer):
+            first = buffer[index]
+            second = buffer[index + 1]
+            opcode = first & 0x0F
+            length = second & 0x7F
+            index += 2
+            if length == 126:
+                length = int.from_bytes(buffer[index : index + 2], "big")
+                index += 2
+            elif length == 127:
+                length = int.from_bytes(buffer[index : index + 8], "big")
+                index += 8
+            payload = buffer[index : index + length]
+            index += length
+            frames.append((opcode, payload))
+        return frames
 
     def test_unknown_site(self):
         status, payload = self.request("GET", "/api/sites/nope/tree")

@@ -14,6 +14,7 @@
     this.term = null;
     this.fitAddon = null;
     this.siteId = "";
+    this.command = "";
     this.sessionId = "htmledit-" + Math.random().toString(36).slice(2, 10);
   }
 
@@ -74,13 +75,15 @@
     }
   };
 
-  TerminalPanel.prototype.connect = function (siteId) {
+  TerminalPanel.prototype.connect = function (siteId, command) {
     var next = siteId || "";
-    if (this.socket && next === this.siteId && this.socket.readyState <= 1) {
+    var cmd = command || "";
+    if (this.socket && next === this.siteId && cmd === this.command && this.socket.readyState <= 1) {
       this.fit();
       return;
     }
     this.siteId = next;
+    this.command = cmd;
     this.disconnect();
     var protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     var url =
@@ -88,8 +91,9 @@
       "//" +
       window.location.host +
       "/ws/terminal?id=" +
-      encodeURIComponent(this.sessionId) +
-      (next ? "&site=" + encodeURIComponent(next) : "");
+      encodeURIComponent(this.sessionId + (cmd ? "-" + cmd.replace(/[^A-Za-z0-9_-]/g, "") : "")) +
+      (next ? "&site=" + encodeURIComponent(next) : "") +
+      (cmd ? "&cmd=" + encodeURIComponent(cmd) : "");
     var self = this;
     try {
       this.socket = new WebSocket(url);
@@ -98,7 +102,7 @@
       return;
     }
     this.socket.onopen = function () {
-      self.onStatus("接続しました", "ok");
+      self.onStatus(cmd ? "接続しました (" + cmd + ")" : "接続しました", "ok");
       self.fit();
       // 寸法が求まらない場合でも大きめの既定サイズで告知する
       self.send({
@@ -134,6 +138,17 @@
     for (var index = 0; index < pending.length; index += 1) {
       pending[index]();
     }
+  };
+
+  TerminalPanel.prototype.kill = function () {
+    if (this.socket && this.socket.readyState === 1) {
+      try {
+        this.socket.send(JSON.stringify({ type: "kill" }));
+      } catch (error) {
+        /* noop */
+      }
+    }
+    this.disconnect();
   };
 
   TerminalPanel.prototype.disconnect = function () {

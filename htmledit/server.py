@@ -135,6 +135,7 @@ class HtmleditHandler(BaseHTTPRequestHandler):
         params = parse_qs(query)
         session_id = (params.get("id") or ["default"])[0]
         site_id = (params.get("site") or [""])[0]
+        command = (params.get("cmd") or [""])[0].strip()
         cwd = str(APP_ROOT)
         if site_id:
             try:
@@ -146,11 +147,11 @@ class HtmleditHandler(BaseHTTPRequestHandler):
         self.wfile.flush()
         self.close_connection = True
 
-        session = terminal.TERMINALS.get(session_id, cwd)
+        session = terminal.TERMINALS.get(session_id, cwd, command=command)
         stop = threading.Event()
         write_lock = threading.Lock()
 
-        def send(payload: bytes, opcode: int = websocket.OP_BINARY) -> None:
+        def send(payload: bytes, opcode: int = websocket.OP_TEXT) -> None:
             with write_lock:
                 self.wfile.write(websocket.encode_frame(payload, opcode))
                 self.wfile.flush()
@@ -164,7 +165,13 @@ class HtmleditHandler(BaseHTTPRequestHandler):
                 if not data:
                     break
                 try:
-                    send(data)
+                    # 必ず JSON のテキストフレームで送る
+                    # (バイナリフレームだとブラウザ側で Blob になり JSON.parse に失敗する)
+                    message = json.dumps(
+                        {"type": "data", "data": data.decode("utf-8", "replace")},
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                    send(message, websocket.OP_TEXT)
                 except (BrokenPipeError, OSError):
                     break
             stop.set()
@@ -197,6 +204,9 @@ class HtmleditHandler(BaseHTTPRequestHandler):
                     session.resize(message.get("cols", 120), message.get("rows", 35))
                 elif kind == "command":
                     session.write(str(message.get("data", "")) + "\n")
+                elif kind == "kill":
+                    terminal.TERMINALS.close(session_id)
+                    break
         except (ConnectionError, OSError):
             pass
         finally:
