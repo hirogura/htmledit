@@ -201,6 +201,7 @@
         renderSites();
         if (!state.sites.length) {
           state.siteId = null;
+          setBaseHref(null);
           el.tree.innerHTML = '<div class="tree-empty">右上の「+ 追加」から GitHub のリポジトリを追加してください。<br />追加すると、ここにフォルダ一覧が表示されます。</div>';
           el.treeTitle.textContent = "ファイル";
           clearGitPane();
@@ -270,9 +271,31 @@
     state.path = null;
     editor.clear();
     el.currentFile.textContent = "ファイルが選択されていません";
+    setBaseHref(siteId);
     renderSites();
     refreshTree();
     refreshGit();
+  }
+
+  /* エディター内の相対 URL (images/... など) をサイトファイルへ解決させる */
+  function setBaseHref(siteId, pagePath) {
+    var base = document.getElementById("site-base");
+    if (!base) {
+      base = document.createElement("base");
+      base.id = "site-base";
+      document.head.appendChild(base);
+    }
+    if (!siteId) {
+      base.removeAttribute("href");
+      return;
+    }
+    // 開いているページと同じ階層を基準にすると相対パスが正しく解決される
+    var dir = "";
+    if (pagePath) {
+      var index = pagePath.lastIndexOf("/");
+      dir = index >= 0 ? pagePath.slice(0, index + 1) : "";
+    }
+    base.setAttribute("href", "/site/" + encodeURIComponent(siteId) + "/" + dir);
   }
 
   function removeSite(site) {
@@ -498,6 +521,7 @@
         state.path = path;
         el.currentFile.textContent = path;
         editor.load(path, payload.content);
+        setBaseHref(state.siteId, path);
         setEditorMode(isHtmlFile(path) ? "wysiwyg" : "source");
         editor.setStatus(path + " (" + formatBytes(payload.size) + ") を読み込みました");
         refreshTree();
@@ -747,7 +771,14 @@
     })
       .then(function (payload) {
         el.commitMessage.value = "";
-        toast("コミットしました\n" + (payload.output || ""), "success");
+        var message = "コミットしました\n" + (payload.output || "");
+        if (payload.files && payload.files.length) {
+          message += "\n" + payload.files.slice(0, 8).join("\n");
+          if (payload.files.length > 8) {
+            message += "\n他 " + (payload.files.length - 8) + " ファイル";
+          }
+        }
+        toast(message, "success");
         refreshTree();
         refreshGit();
       })
@@ -992,6 +1023,13 @@
         editor.notifyChange();
       }))
     );
+    var resolved = document.createElement("input");
+    resolved.className = "input";
+    resolved.type = "text";
+    resolved.readOnly = true;
+    resolved.value = image.src || "";
+    resolved.title = "エディター内で解決される URL";
+    section.appendChild(propRow("解決後の URL", resolved));
     section.appendChild(
       propCheck(!!parentLink, "画像をクリック時にリンクを開く", function (checked) {
         toggleImageLink(image, checked);
@@ -1076,6 +1114,9 @@
       .then(function (payload) {
         editor.insertImage(payload.reference, name);
         toast("画像を挿入しました: " + payload.reference, "success");
+        if (payload.ignored) {
+          toast("警告: " + payload.path + " は .gitignore によりコミットされません。", "warn");
+        }
         refreshTree();
       })
       .catch(function (error) {
@@ -1118,6 +1159,9 @@
         .then(function (payload) {
           editor.insertImage(payload.reference, file.name);
           toast("画像を保存しました: " + payload.path, "success");
+          if (payload.ignored) {
+            toast("警告: " + payload.path + " は .gitignore によりコミットされません。", "warn");
+          }
           refreshTree();
         })
         .catch(function (error) {

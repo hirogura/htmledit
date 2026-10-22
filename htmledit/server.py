@@ -13,8 +13,9 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-from . import VERSION, api
+from . import VERSION, api, sites
 from .config import CONFIG, STATIC_DIR
+from .sites import REGISTRY, SiteError
 
 MAX_BODY = 16 * 1024 * 1024
 
@@ -103,6 +104,10 @@ class HtmleditHandler(BaseHTTPRequestHandler):
                 self._handle_api(method, path, split.query)
                 return
 
+            if path.startswith("/site/"):
+                self._handle_site_file(method, path)
+                return
+
             self._handle_static(method, path)
         except api.ApiError as exc:
             self._send_json(exc.status, {"error": exc.message, "detail": exc.detail})
@@ -111,6 +116,41 @@ class HtmleditHandler(BaseHTTPRequestHandler):
         except Exception as exc:  # pragma: no cover - 想定外
             self.log_message("error: %s: %s", type(exc).__name__, exc)
             self._send_json(500, {"error": f"サーバーエラー: {exc}"})
+
+    def _handle_site_file(self, method: str, path: str) -> None:
+        """サイトのリポジトリ内のファイルを配信する.
+
+        エディター (WYSIWYG / プレビュー) 内の相対 URL を解決するために使う。
+        """
+        if method not in ("GET", "HEAD"):
+            self._send_error_page(405, "このVerbは使用できません。")
+            return
+        remainder = path[len("/site/") :]
+        site_id, _, relative = remainder.partition("/")
+        if not site_id or not relative:
+            self._send_error_page(404, "ファイルが見つかりません。")
+            return
+        try:
+            site = REGISTRY.get(site_id)
+            target = sites.resolve_path(site, relative)
+        except SiteError:
+            self._send_error_page(404, "ファイルが見つかりません。")
+            return
+        if not target.is_file():
+            self._send_error_page(404, "ファイルが見つかりません。")
+            return
+        content_type, _ = mimetypes.guess_type(str(target))
+        if content_type is None:
+            content_type = "application/octet-stream"
+        if content_type.startswith("text/") or content_type in ("application/javascript", "application/json"):
+            content_type += "; charset=utf-8"
+        body = target.read_bytes()
+        self._send_bytes(
+            200,
+            body,
+            content_type,
+            {"Cache-Control": "no-cache", "Access-Control-Allow-Origin": "*"},
+        )
 
     def _handle_api(self, method: str, path: str, query: str) -> None:
         body = self._read_body()

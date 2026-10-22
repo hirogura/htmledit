@@ -109,11 +109,20 @@ class ApiTestCase(unittest.TestCase):
             except json.JSONDecodeError:
                 return exc.code, {"error": body}
 
+    def request_raw(self, path):
+        url = f"http://127.0.0.1:{self.port}{path}"
+        req = urllib.request.Request(url, headers={"X-Requested-With": "htmledit"}, method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=30) as response:
+                return response.status, response.read().decode("utf-8", "replace"), response.headers.get("Content-Type", "")
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode("utf-8", "replace"), exc.headers.get("Content-Type", "")
+
     def test_version(self):
         status, payload = self.request("GET", "/api/version")
         self.assertEqual(status, 200)
-        self.assertEqual(payload["version"], "0.4.0")
-        self.assertEqual(payload["label"], "v.0.4.0")
+        self.assertEqual(payload["version"], "0.4.1")
+        self.assertEqual(payload["label"], "v.0.4.1")
 
     def test_site_lifecycle(self):
         status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
@@ -310,6 +319,27 @@ class ApiTestCase(unittest.TestCase):
             f"/api/sites/{site_id}/assets/upload?name=x.txt", b"hello", "text/plain"
         )
         self.assertEqual(status, 400)
+
+        self.request("DELETE", f"/api/sites/{site_id}", {})
+
+    def test_site_file_serving(self):
+        status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
+        site_id = payload["site"]["id"]
+
+        status, body, content_type = self.request_raw(
+            f"/site/{site_id}/assets/style.css"
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("text/css", content_type)
+        self.assertIn("color:#333", body)
+
+        # 存在しないファイルは 404
+        status, _, _ = self.request_raw(f"/site/{site_id}/assets/missing.css")
+        self.assertEqual(status, 404)
+
+        # サイト外への参照は拒否される
+        status, _, _ = self.request_raw(f"/site/{site_id}/../../etc/passwd")
+        self.assertEqual(status, 404)
 
         self.request("DELETE", f"/api/sites/{site_id}", {})
 

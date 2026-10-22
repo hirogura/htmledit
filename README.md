@@ -117,6 +117,17 @@ images/2026/10/22/photo.png
 - 同名ファイルがある場合は `photo-1.png` のように連番になる
 - アップロードされたファイル名は安全な名前に変換される (パスや記号を含む場合は置換)
 
+画像を表示する仕組み:
+
+- 作成した画像はリポジトリ内の `images/YYYY/MM/DD/` に保存され、HTML からは
+  **そのページからの相対パス**で参照される (ルート直下の `index.html` なら
+  `images/2026/10/22/photo.png`、サブディレクトリのページなら `../images/...`)
+- エディター (WYSIWYG / プレビュー) 内では相対 URL がそのままでは解決できないため、
+  アプリがサイトのリポジトリを `/site/{サイトID}/` で配信し、エディター側の
+  `<base>` をそこに向けることで画像を正しく表示する
+- `.gitignore` で無視されるファイルに画像を保存した場合は、警告を表示する
+  (警告された画像はコミットされないため、`src` を確認すること)
+
 ## 認証情報 (ユーザーID / PAT)
 
 「サイトを追加」ウィンドウには **ユーザーID** と **PAT (Personal Access Token)** の項目があります。
@@ -139,7 +150,7 @@ SSH リモート (`git@github.com:...`) では SSH 鍵が使われます。
 
 | 表示 | 動作 |
 | --- | --- |
-| `v.0.4.0` | 実行中のバージョン |
+| `v.0.4.1` | 実行中のバージョン |
 | アップデート | `https://github.com/hirogura/htmledit.git` から `git fetch` + `git merge --ff-only` で自身を更新する |
 | 再起動 | `systemctl restart htmledit` でサービスを再起動する (systemd がない環境ではプロセスを再実行) |
 
@@ -264,6 +275,7 @@ htmledit/
 | POST | `/api/sites/{id}/git/commit` | commit |
 | POST | `/api/sites/{id}/git/push` | push |
 | GET | `/api/github/repo?owner=&repo=` | GitHub リポジトリ情報 |
+| GET | `/site/{id}/{path}` | サイトのリポジトリ内のファイル配信 (エディター内の相対 URL 解決用) |
 | POST | `/api/self/update` | htmledit 自身のアップデート |
 | POST | `/api/self/restart` | htmledit サービスの再起動 |
 

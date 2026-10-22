@@ -334,6 +334,21 @@ def push(path: str | Path, branch: str = "", set_upstream: bool = False, auth: A
     return run_git(args, cwd=path, use_auth=True, auth=auth)
 
 
+def committed_files(path: str | Path, limit: int = 50) -> list[str]:
+    """直前のコミットで追加・変更されたファイルの一覧."""
+    result = run_git(["show", "--name-only", "--pretty=format:", "HEAD"], cwd=path)
+    if not result.ok:
+        return []
+    files = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return files[:limit]
+
+
+def is_ignored(path: str | Path, relative: str) -> bool:
+    """相対パスが .gitignore により無視されるか."""
+    result = run_git(["check-ignore", "-q", "--", relative], cwd=path)
+    return result.returncode == 0
+
+
 def discard_changes(path: str | Path, paths: list[str] | None = None) -> GitResult:
     args = ["checkout", "--"]
     if paths:

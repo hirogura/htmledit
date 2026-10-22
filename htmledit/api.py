@@ -259,6 +259,7 @@ def copy_asset(request: Request, params: dict) -> dict:
         result = sites.copy_asset(site, source, target=target, page=page)
     except SiteError as exc:
         raise ApiError(400, str(exc)) from exc
+    result["ignored"] = gitcmd.is_ignored(site.path, result["path"])
     return {"ok": True, **result}
 
 
@@ -277,6 +278,7 @@ def upload_asset(request: Request, params: dict) -> dict:
         result = sites.save_upload(site, name, request.body, page=page)
     except SiteError as exc:
         raise ApiError(400, str(exc)) from exc
+    result["ignored"] = gitcmd.is_ignored(site.path, result["path"])
     return {"ok": True, **result}
 
 
@@ -345,7 +347,8 @@ def git_commit(request: Request, params: dict) -> dict:
         raise ApiError(500, str(exc)) from exc
     if not result.ok:
         raise ApiError(409, f"commit に失敗しました: {(result.stderr or result.stdout).strip()}")
-    return {"ok": True, "output": (result.stdout + result.stderr).strip()}
+    files = gitcmd.committed_files(site.path)
+    return {"ok": True, "output": (result.stdout + result.stderr).strip(), "files": files}
 
 
 @route("POST", r"/api/sites/(?P<site_id>[^/]+)/git/push")
