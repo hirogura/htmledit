@@ -14,7 +14,8 @@
     collapsed: {},
     treeEntries: [],
     editingSiteId: null,
-    opencodeStarted: false
+    opencodeStarted: false,
+    postPhotos: []
   };
 
   var el = {};
@@ -957,6 +958,278 @@
       .finally(function () {
         busy(el.btnSave, false);
         el.btnSave.disabled = false;
+      });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 記事投稿 (public/index.html への挿入)                                */
+  /* ------------------------------------------------------------------ */
+  var POST_PAGE = "public/index.html";
+  var POST_DEFAULT_MAX_SIDE = 1024;
+  var RESIZABLE_TYPES = ["image/png", "image/jpeg", "image/webp"];
+
+  function openPostDialog() {
+    if (!state.siteId) {
+      toast("先にサイトを追加してください。", "warn");
+      return;
+    }
+    el.postTitle.value = "";
+    el.postBody.value = "";
+    el.postPhotos.value = "";
+    state.postPhotos = [];
+    el.postMaxSide.value = String(POST_DEFAULT_MAX_SIDE);
+    el.postError.hidden = true;
+    renderPostPhotoList();
+    el.postDialog.showModal();
+    el.postTitle.focus();
+  }
+
+  function renderPostPhotoList() {
+    var list = el.postPhotoList;
+    list.innerHTML = "";
+    (state.postPhotos || []).forEach(function (file, index) {
+      var item = document.createElement("span");
+      item.className = "post-photo-item";
+      var name = document.createElement("span");
+      name.className = "post-photo-name";
+      name.textContent = file.name + " (" + formatBytes(file.size) + ")";
+      item.appendChild(name);
+      var remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "post-photo-remove";
+      remove.textContent = "×";
+      remove.title = "この写真を外す";
+      remove.addEventListener("click", function () {
+        state.postPhotos.splice(index, 1);
+        renderPostPhotoList();
+      });
+      item.appendChild(remove);
+      list.appendChild(item);
+    });
+  }
+
+  /* 長辺が maxSide を超える画像を canvas で縮小する (超えなければ元のまま) */
+  function postResizeImage(file, maxSide) {
+    if (!maxSide || RESIZABLE_TYPES.indexOf(file.type) < 0) {
+      return Promise.resolve(file);
+    }
+    return new Promise(function (resolve) {
+      var url = URL.createObjectURL(file);
+      var image = new Image();
+      image.onload = function () {
+        URL.revokeObjectURL(url);
+        var long = Math.max(image.naturalWidth, image.naturalHeight);
+        if (!long || long <= maxSide) {
+          resolve(file);
+          return;
+        }
+        var scale = maxSide / long;
+        var canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        var context = canvas.getContext("2d");
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(function (blob) {
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+          var resized = new File([blob], file.name, { type: blob.type || file.type });
+          if (window.console) {
+            window.console.info(
+              "post: resize " + file.name + " " + long + "px -> " + Math.max(canvas.width, canvas.height) + "px"
+            );
+          }
+          resolve(resized);
+        }, file.type);
+      };
+      image.onerror = function () {
+        URL.revokeObjectURL(url);
+        resolve(file);
+      };
+      image.src = url;
+    });
+  }
+
+  function postUploadImage(siteId, file, page) {
+    return fetch(
+      "/api/sites/" +
+        encodeURIComponent(siteId) +
+        "/assets/upload?name=" +
+        encodeURIComponent(file.name) +
+        "&page=" +
+        encodeURIComponent(page),
+      {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/octet-stream", "X-Requested-With": "htmledit" },
+        credentials: "same-origin",
+        body: file
+      }
+    )
+      .then(function (response) {
+        return response
+          .json()
+          .catch(function () {
+            return {};
+          })
+          .then(function (payload) {
+            if (!response.ok) {
+              throw new Error(payload.error || "アップロードに失敗しました");
+            }
+            return payload;
+          });
+      })
+      .then(function (payload) {
+        invalidateAssetImages();
+        return payload.reference || payload.path;
+      });
+  }
+
+  /*
+   * 挿入位置を探す:
+   * 1. <main class="container"> 内の <section class="hero"> の閉じタグ直後
+   * 2. hero がなければ </main> の直前
+   * 3. main.container がなければ </body> の直前
+   * 4. いずれもなければ末尾
+   */
+  function classListOf(tag) {
+    var match = /class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
+    return (match ? (match[1] || match[2] || match[3] || "") : "").split(/\s+/);
+  }
+
+  function findPostInsertIndex(html) {
+    var mainRe = /<main\b[^>]*>/gi;
+    var match;
+    while ((match = mainRe.exec(html))) {
+      if (classListOf(match[0]).indexOf("container") < 0) {
+        continue;
+      }
+      var mainStart = mainRe.lastIndex;
+      var sectionRe = /<section\b[^>]*>/gi;
+      sectionRe.lastIndex = mainStart;
+      var section;
+      while ((section = sectionRe.exec(html))) {
+        if (classListOf(section[0]).indexOf("hero") < 0) {
+          continue;
+        }
+        var depth = 1;
+        var tagRe = /<(\/?)section\b[^>]*>/gi;
+        tagRe.lastIndex = sectionRe.lastIndex;
+        var tag;
+        while ((tag = tagRe.exec(html))) {
+          if (tag[1]) {
+            depth -= 1;
+            if (depth === 0) {
+              return tag.index + tag[0].length;
+            }
+          } else {
+            depth += 1;
+          }
+        }
+        break;
+      }
+      var closeMainRe = /<\/main\s*>/i;
+      var closeMain = closeMainRe.exec(html.slice(mainStart));
+      if (closeMain) {
+        return mainStart + closeMain.index;
+      }
+      return html.length;
+    }
+    var closeBody = /<\/body\s*>/i.exec(html);
+    return closeBody ? closeBody.index : html.length;
+  }
+
+  function buildPostBlock(title, body, references) {
+    var lines = ["<h2>" + escapeHtml(title) + "</h2>"];
+    var bodyText = (body || "").replace(/\r\n?/g, "\n").trim();
+    if (bodyText) {
+      lines.push("<p>" + bodyText.split("\n").map(escapeHtml).join("<br>\n") + "</p>");
+    }
+    references.forEach(function (reference) {
+      lines.push('<img src="' + escapeHtml(reference) + '" alt="">');
+      lines.push("<br>");
+    });
+    return "\n" + lines.join("\n") + "\n";
+  }
+
+  function submitPostDialog() {
+    var title = el.postTitle.value.trim();
+    var body = el.postBody.value;
+    var maxSide = parseInt(el.postMaxSide.value, 10);
+    if (!title) {
+      el.postError.textContent = "タイトルを入力してください。";
+      el.postError.hidden = false;
+      return;
+    }
+    if (!body.trim() && !(state.postPhotos || []).length) {
+      el.postError.textContent = "本文を入力するか、写真を添付してください。";
+      el.postError.hidden = false;
+      return;
+    }
+    if (isNaN(maxSide) || maxSide <= 0) {
+      maxSide = POST_DEFAULT_MAX_SIDE;
+    }
+    var siteId = state.siteId;
+    var photos = (state.postPhotos || []).slice();
+
+    if (state.path === POST_PAGE && editor && editor.dirty) {
+      if (!confirm("未保存の変更があります。投稿した内容で public/index.html を上書きしますか？")) {
+        return;
+      }
+    }
+
+    busy(el.btnPostSubmit, true);
+    el.btnPostSubmit.disabled = true;
+
+    var uploadChain = Promise.resolve();
+    var references = [];
+    photos.forEach(function (file, index) {
+      uploadChain = uploadChain.then(function () {
+        return postResizeImage(file, maxSide)
+          .then(function (image) {
+            toast((index + 1) + " / " + photos.length + " 枚目をアップロード中…", "info");
+            return postUploadImage(siteId, image, POST_PAGE);
+          })
+          .then(function (reference) {
+            references.push(reference);
+          });
+      });
+    });
+
+    uploadChain
+      .then(function () {
+        return api(
+          "/api/sites/" + encodeURIComponent(siteId) + "/file?path=" + encodeURIComponent(POST_PAGE)
+        ).then(function (payload) {
+          var html = payload.content || "";
+          var index = findPostInsertIndex(html);
+          var block = buildPostBlock(title, body, references);
+          var updated = html.slice(0, index) + block + html.slice(index);
+          return api("/api/sites/" + encodeURIComponent(siteId) + "/file", {
+            method: "PUT",
+            body: { path: POST_PAGE, content: updated }
+          });
+        });
+      })
+      .then(function () {
+        el.postDialog.close();
+        toast("投稿しました: " + POST_PAGE, "success");
+        refreshTree();
+        refreshGit();
+        if (state.path === POST_PAGE) {
+          openFile(POST_PAGE);
+        }
+      })
+      .catch(function (error) {
+        el.postError.textContent =
+          error.status === 404
+            ? POST_PAGE + " が見つかりません。先にページを作成してください。"
+            : error.message;
+        el.postError.hidden = false;
+      })
+      .finally(function () {
+        busy(el.btnPostSubmit, false);
+        el.btnPostSubmit.disabled = false;
       });
   }
 
@@ -1986,6 +2259,17 @@
     el.btnOpencode.addEventListener("click", openOpencode);
     el.btnMemoSave.addEventListener("click", saveMemo);
     el.btnFoldTree.addEventListener("click", foldTree);
+    el.btnPost.addEventListener("click", openPostDialog);
+    el.btnPostSubmit.addEventListener("click", submitPostDialog);
+    el.btnPostCancel.addEventListener("click", function () {
+      el.postDialog.close();
+    });
+    el.postPhotos.addEventListener("change", function () {
+      var files = Array.prototype.slice.call(el.postPhotos.files || []);
+      state.postPhotos = (state.postPhotos || []).concat(files);
+      renderPostPhotoList();
+      el.postPhotos.value = "";
+    });
     el.tree.addEventListener("contextmenu", function (event) {
       // ツリーの余白を右クリックした場合はサイトルート直下を対象にする
       event.preventDefault();
@@ -2036,6 +2320,10 @@
     el.siteForm.addEventListener("submit", function (event) {
       event.preventDefault();
       submitSiteDialog();
+    });
+    el.postForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      submitPostDialog();
     });
   }
 
@@ -2095,6 +2383,17 @@
     el.btnMemoClose = $("btn-memo-close");
     el.btnFoldTree = $("btn-fold-tree");
     el.btnTerminalClose = $("btn-terminal-close");
+    el.btnPost = $("btn-post");
+    el.postDialog = $("post-dialog");
+    el.postForm = $("post-form");
+    el.postTitle = $("post-title");
+    el.postBody = $("post-body");
+    el.postPhotos = $("post-photos");
+    el.postPhotoList = $("post-photo-list");
+    el.postMaxSide = $("post-max-side");
+    el.postError = $("post-error");
+    el.btnPostSubmit = $("btn-post-submit");
+    el.btnPostCancel = $("btn-post-cancel");
 
     editor = window.htmleditEditor.create({
       host: $("wysiwyg-host"),
