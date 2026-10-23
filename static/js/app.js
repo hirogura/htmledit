@@ -3293,6 +3293,9 @@
       },
       onInsertImage: function () {
         insertImageFromLibrary();
+      },
+      onHandwriting: function () {
+        el.handwritingPane.classList.remove("is-hidden");
       }
     });
 

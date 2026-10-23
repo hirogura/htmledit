@@ -120,6 +120,14 @@
         )
       },
       {
+        label: "✏",
+        title: "手書き",
+        command: "handwriting",
+        icon: flatIcon(
+          '<path d="M3 13l2-1 7-7-1-1-7 7-1 2z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
+        )
+      },
+      {
         label: "⌫",
         title: "書式を消去",
         command: "removeFormat",
@@ -194,6 +202,7 @@
     this.onDropUnsupported = options.onDropUnsupported || function () {};
     this.onUploadImage = options.onUploadImage || function () {};
     this.onInsertImage = options.onInsertImage || null;
+    this.onHandwriting = options.onHandwriting || null;
 
     this.mode = "wysiwyg";
     this.path = "";
@@ -252,6 +261,10 @@
           if (item.command === "insertImage" && self.onInsertImage) {
             self.onInsertImage();
             return;
+            if (item.command === "handwriting" && self.onHandwriting) {
+              self.onHandwriting();
+              return;
+            }
           }
           if (item.command === "setElementId") {
             self.setElementId();
