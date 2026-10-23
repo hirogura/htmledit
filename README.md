@@ -214,7 +214,8 @@ public/images/2026/10/22/photo.png
 | --- | --- |
 | サイトタイトル | `<title>` と、ヒーロー部の `<h1>` (大見出し) に反映される |
 | サイトの説明 | 上部メニュー内のサイトタイトルの下に小さく表示される (`site-brand-desc`)。空欄なら非表示 |
-| サイトアイコン | `<link rel="icon">` の href に反映される。index.html からの相対パス (`public/` 直下なら「favicon.svg」) か URL を指定。「public/…」形式で入力した場合は自動で補正する |
+| サイトアイコン | `<link rel="icon">` の href に反映される。index.html からの相対パス (`public/` 直下なら「favicon.svg」) か URL を指定。「public/…」形式で入力した場合は自動で補正する。相対パスのファイルがまだ無い場合は、タイトルの頭文字の SVG ファビコン (`public/favicon.svg` など) を自動作成する (既存ファイルは上書きしない) |
+| 幅の指定 | ヘッダー部分 (`site-topbar`) と本文部分 (`container`) の最大幅を % か px で指定。「設定を適用」では既存の `<style>` 内の該当ルールの `max-width` を書き換える |
 | 上部固定メニュー | 「項目名」「リンク先」を入力して作る (`+ 項目を追加` で行を追加)。`<body>` の直後に `position: sticky` の固定メニュー (`<header class="site-topbar">`) が入り、サイトタイトルと説明もメニューと一緒に固定表示されるため、スクロールしても見えなくならない |
 
 - 「設定を適用」ボタンで、既存の `public/index.html` に上述の内容を反映する

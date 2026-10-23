@@ -1470,6 +1470,8 @@
     var title = settings.title || "サイト";
     var brand = { title: title, desc: (settings.desc || "").trim() };
     var menuHtml = buildTopbarHtml(settings.items, brand);
+    var headerWidth = normalizeCssMeasure(settings.headerWidth, "100%");
+    var bodyWidth = normalizeCssMeasure(settings.bodyWidth, "760px");
     var iconLink = settings.icon
       ? '\n    <link rel="icon" href="' + escapeHtml(settings.icon) + '" />'
       : "";
@@ -1485,6 +1487,8 @@
       "      flex-wrap: wrap;",
       "      align-items: center;",
       "      gap: 4px 16px;",
+      "      max-width: " + headerWidth + ";",
+      "      margin: 0 auto;",
       "      padding: 10px 20px;",
       "      background: #fff;",
       "      border-bottom: 1px solid #e2e6ea;",
@@ -1496,7 +1500,7 @@
       '    .site-topbar a { color: #37414c; text-decoration: none; font-size: 14px; }',
       '    .site-topbar a:hover { color: #2563eb; }',
       "",
-      "    .container { max-width: 760px; margin: 0 auto; padding: 8px 20px 48px; }",
+      "    .container { max-width: " + bodyWidth + "; margin: 0 auto; padding: 8px 20px 48px; }",
       "    .hero { padding: 40px 0 8px; border-bottom: 1px solid #eef1f4; margin-bottom: 24px; }",
       "    .hero h1 { margin: 0 0 8px; font-size: 28px; font-weight: 700; }",
       "    .hero p { margin: 0; color: #69737e; font-size: 14px; }",
@@ -1544,6 +1548,52 @@
     return lines.join("\n");
   }
 
+  /* style ブロック内のルールに max-width を設定する (既存値があれば置換) */
+  function applyCssWidthRule(css, ruleName, value) {
+    var valueRe = new RegExp(
+      "(" + ruleName + "\\s*\\{[^}]*)max-width\\s*:\\s*[^;}]+",
+      "i"
+    );
+    if (valueRe.test(css)) {
+      return css.replace(valueRe, "$1max-width: " + value);
+    }
+    var openRe = new RegExp("(" + ruleName + "\\s*\\{)", "i");
+    if (openRe.test(css)) {
+      return css.replace(openRe, "$1 max-width: " + value + ";");
+    }
+    return css;
+  }
+
+  /* 幅の指定を <style> ブロックに反映する (ヘッダー = .site-topbar, 本文 = .container) */
+  function applyLayoutWidths(output, settings) {
+    if (!/<style\b[^>]*>/i.test(output)) {
+      return output;
+    }
+    var headerWidth = normalizeCssMeasure(settings.headerWidth, "");
+    var bodyWidth = normalizeCssMeasure(settings.bodyWidth, "");
+    if (!headerWidth && !bodyWidth) {
+      return output;
+    }
+    return output.replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style\s*>)/i, function (
+      whole,
+      open,
+      css,
+      close
+    ) {
+      var updated = css;
+      if (headerWidth) {
+        updated = applyCssWidthRule(updated, "\\.site-topbar", headerWidth);
+      }
+      if (bodyWidth) {
+        updated = applyCssWidthRule(updated, "\\.container", bodyWidth);
+      }
+      if (updated === css) {
+        return whole;
+      }
+      return open + updated + close;
+    });
+  }
+
   /* 既存 html にタイトル / 説明 / アイコン / 上部メニューを反映して返す */
   function applyHeadSettings(html, settings) {
     var output = html;
@@ -1587,6 +1637,7 @@
         return bodyTag + "\n  " + menuHtml;
       });
     }
+    output = applyLayoutWidths(output, settings);
     return output;
   }
 
@@ -1603,6 +1654,24 @@
       rows.push({ label: anchor[2].trim(), href: anchor[1] });
     }
     return rows;
+  }
+
+  /* 幅の指定を既存 html の style ブロックから読み取る */
+  function readLayoutWidthsFromHtml(html) {
+    var match = /<style\b[^>]*>([\s\S]*?)<\/style\s*>/i.exec(html);
+    var result = {};
+    if (!match) {
+      return result;
+    }
+    var topbar = /\.site-topbar\s*\{[^}]*?max-width\s*:\s*([^;}]+)/i.exec(match[1]);
+    if (topbar) {
+      result.headerWidth = topbar[1].trim();
+    }
+    var container = /\.container\s*\{[^}]*?max-width\s*:\s*([^;}]+)/i.exec(match[1]);
+    if (container) {
+      result.bodyWidth = container[1].trim();
+    }
+    return result;
   }
 
   /* サイトの説明を既存 html (上部メニューの説明 or ヒーロー部の最初の段落) から読み取る */
@@ -1647,6 +1716,64 @@
     return text;
   }
 
+  /* タイトルの頭文字でシンプルな SVG ファビコンを作る */
+  function buildFaviconSvg(title) {
+    var initial = ((title || "").trim().charAt(0) || "S").toUpperCase();
+    return [
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">',
+      '  <rect width="64" height="64" rx="12" fill="#2563eb" />',
+      '  <text x="32" y="43" font-family="system-ui, sans-serif" font-size="32" font-weight="700" fill="#ffffff" text-anchor="middle">' +
+        escapeHtml(initial) +
+        "</text>",
+      "</svg>",
+      ""
+    ].join("\n");
+  }
+
+  /*
+   * ファビコンファイルがまだ無ければ自動生成する。
+   * <link rel="icon"> があってもファイルが存在しないと反映されないので、
+   * 相対パス指定の時はタイトルの頭文字で SVG を作る (既存ファイルは触らない)。
+   */
+  function ensureFaviconFile(siteId, settings) {
+    var icon = (settings.icon || "").trim();
+    if (!icon || /^(https?:)?\/\//i.test(icon) || /^data:/i.test(icon)) {
+      return Promise.resolve(null);
+    }
+    var pageDir = parentDir(POST_PAGE);
+    var name = pageDir ? pageDir + "/" + icon : icon;
+    return api(
+      "/api/sites/" + encodeURIComponent(siteId) + "/file?path=" + encodeURIComponent(name)
+    )
+      .then(function () {
+        /* 既存のファイルがある場合はそのまま使う */
+        return null;
+      })
+      .catch(function (error) {
+        if (error.status !== 404) {
+          throw error;
+        }
+        return api("/api/sites/" + encodeURIComponent(siteId) + "/file", {
+          method: "PUT",
+          body: { path: name, content: buildFaviconSvg(settings.title) }
+        }).then(function () {
+          return name;
+        });
+      });
+  }
+
+  /* 幅の指定を CSS に安全に使える形 (auto / 数値 + 単位) に整える */
+  function normalizeCssMeasure(value, fallback) {
+    var text = (value || "").trim();
+    if (!text) {
+      return fallback;
+    }
+    if (/^(auto|\d+(\.\d+)?(px|%|em|rem|vw|vh)?)$/i.test(text)) {
+      return text;
+    }
+    return fallback;
+  }
+
   function openSiteSettings() {
     if (!state.siteId) {
       toast("先にサイトを追加してください。", "warn");
@@ -1657,6 +1784,8 @@
     el.settingsTitle.value = "";
     el.settingsDesc.value = "";
     el.settingsIcon.value = "";
+    el.settingsHeaderWidth.value = "";
+    el.settingsBodyWidth.value = "";
     state.settingsMenuRows = [];
     renderMenuRows(state.settingsMenuRows);
     el.settingsError.hidden = true;
@@ -1688,6 +1817,13 @@
         if (desc) {
           el.settingsDesc.value = desc;
         }
+        var widths = readLayoutWidthsFromHtml(html);
+        if (widths.headerWidth) {
+          el.settingsHeaderWidth.value = widths.headerWidth;
+        }
+        if (widths.bodyWidth) {
+          el.settingsBodyWidth.value = widths.bodyWidth;
+        }
       })
       .catch(function () {
         /* index.html が無い場合は空欄のまま */
@@ -1713,6 +1849,8 @@
       title: el.settingsTitle.value.trim(),
       desc: el.settingsDesc.value.trim(),
       icon: normalizeIconReference(el.settingsIcon.value),
+      headerWidth: el.settingsHeaderWidth.value.trim(),
+      bodyWidth: el.settingsBodyWidth.value.trim(),
       items: readMenuRows()
     };
 
@@ -1766,10 +1904,16 @@
           });
         })
         .then(function (backupName) {
+          return ensureFaviconFile(siteId, settings).then(function (faviconName) {
+            return { backup: backupName, favicon: faviconName };
+          });
+        })
+        .then(function (result) {
           el.settingsDialog.close();
           toast(
             "index.html を作成しました: " + POST_PAGE +
-              (backupName ? "\n元のファイルは " + backupName + " に退避しました。" : ""),
+              (result.backup ? "\n元のファイルは " + result.backup + " に退避しました。" : "") +
+              (result.favicon ? "\nファビコンファイルを作成しました: " + result.favicon : ""),
             "success"
           );
           flushEditorForPostPage();
@@ -1784,17 +1928,25 @@
           if (!payload.content) {
             throw new Error(POST_PAGE + " が空です。");
           }
-          return api("/api/sites/" + encodeURIComponent(siteId) + "/file", {
-            method: "PUT",
-            body: {
-              path: POST_PAGE,
-              content: applyHeadSettings(payload.content, settings)
-            }
+          return ensureFaviconFile(siteId, settings).then(function (faviconName) {
+            return api("/api/sites/" + encodeURIComponent(siteId) + "/file", {
+              method: "PUT",
+              body: {
+                path: POST_PAGE,
+                content: applyHeadSettings(payload.content, settings)
+              }
+            }).then(function () {
+              return faviconName;
+            });
           });
         })
-        .then(function () {
+        .then(function (faviconName) {
           el.settingsDialog.close();
-          toast("設定を適用しました: " + POST_PAGE, "success");
+          toast(
+            "設定を適用しました: " + POST_PAGE +
+              (faviconName ? "\nファビコンファイルを作成しました: " + faviconName : ""),
+            "success"
+          );
           flushEditorForPostPage();
           refreshGit();
         });
@@ -3000,6 +3152,8 @@
     el.settingsTitle = $("settings-title");
     el.settingsDesc = $("settings-desc");
     el.settingsIcon = $("settings-icon");
+    el.settingsHeaderWidth = $("settings-header-width");
+    el.settingsBodyWidth = $("settings-body-width");
     el.settingsMenuRows = $("settings-menu-rows");
     el.btnSettingsMenuAdd = $("btn-settings-menu-add");
     el.settingsError = $("settings-error");

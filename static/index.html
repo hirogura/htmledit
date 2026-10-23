@@ -13,7 +13,7 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.1.8.3</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.1.8.4</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
@@ -258,6 +258,7 @@
           <p class="field-hint">
             index.html からの相対パス (public/ 直下なら「favicon.svg」) か URL を指定します。
             「public/…」で始まるリポジトリルート基準のパスは自動で補正されます。
+            指定した相対パスにファイルが無い場合は、タイトルの頭文字を使った SVG ファビコンを自動作成します。
           </p>
         </label>
         <label class="field">
@@ -265,6 +266,23 @@
           <input class="input" type="text" id="settings-desc" placeholder="サイトの一行説明" />
           <p class="field-hint">上部メニューと一緒に固定表示されます (空欄で非表示)。</p>
         </label>
+        <fieldset class="fieldset">
+          <legend class="field-label">幅の指定</legend>
+          <label class="field">
+            <span class="field-label">ヘッダー部分の幅</span>
+            <input class="input" type="text" id="settings-header-width" placeholder="100% または 1200px" />
+            <p class="field-hint">
+              上部固定メニュー (site-topbar) の最大幅。パーセント (%) か固定値 (px など) で指定します。
+            </p>
+          </label>
+          <label class="field">
+            <span class="field-label">本文部分の幅</span>
+            <input class="input" type="text" id="settings-body-width" placeholder="760px" />
+            <p class="field-hint">
+              本文コンテナ (container) の最大幅。パーセント (%) か固定値 (px など) で指定します。
+            </p>
+          </label>
+        </fieldset>
         <fieldset class="fieldset">
           <legend class="field-label">上部固定メニュー</legend>
           <div class="menu-rows" id="settings-menu-rows"></div>
