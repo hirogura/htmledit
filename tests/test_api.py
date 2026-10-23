@@ -712,7 +712,12 @@ class ApiTestCase(unittest.TestCase):
         # トップページはスニペット 20 件 (新しい順) + 「続きを読む」
         index = (repo / "public/index.html").read_text("utf-8")
         self.assertEqual(index.count("data-post-id"), 20)
-        self.assertIn('<h2><a href="posts/20261023-000021.html">記事 21</a></h2>', index)
+        self.assertIn(
+            '<h2><a href="posts/20261023-000021.html" style="color: inherit; text-decoration: none;">記事 21</a></h2>',
+            index,
+        )
+        # 「続きを読む」は角丸のバッジ風リンク
+        self.assertIn("border-radius: 999px", index)
         self.assertIn("続きを読む", index)
         self.assertIn("page/2.html", index)
         self.assertIn("次へ", index)

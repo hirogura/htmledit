@@ -30,6 +30,11 @@ POST_PAGE_PREFIX = "public/posts"
 
 _SMALL_TEXT_STYLE = "font-size: 0.8em; color: #888;"
 _THUMB_STYLE = "max-width: 100%; width: 280px; height: auto; border-radius: 8px;"
+_TITLE_LINK_STYLE = "color: inherit; text-decoration: none;"
+_READ_MORE_STYLE = (
+    "display: inline-block; padding: 3px 14px; border: 1px solid #d5dbe2;"
+    " border-radius: 999px; font-size: 0.85em; color: #5a6470; text-decoration: none;"
+)
 _BACK_LINK_LABEL = "一覧ページへ戻る"
 _NAV_STYLE = (
     "display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: center;"
@@ -250,11 +255,12 @@ def _thumb_src(src: str, on_index: bool) -> str:
 def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: bool, with_divider: bool, link: str, thumb_src: str = "") -> str:
     snippet, truncated = _snippet_parts(body_html)
     read_label = "... [続きを読む]" if truncated else "[続きを読む]"
-    lines = [f'<h2><a href="{link}">{html.escape(title or "無題")}</a></h2>']
+    # タイトルは青字・下線にしない (シンプルに本文色で)
+    lines = [f'<h2><a href="{link}" style="{_TITLE_LINK_STYLE}">{html.escape(title or "無題")}</a></h2>']
     if snippet:
-        lines.append(f'<p>{snippet}<a href="{link}">{read_label}</a></p>')
+        lines.append(f'<p>{snippet}<a href="{link}" style="{_READ_MORE_STYLE}">{read_label}</a></p>')
     else:
-        lines.append(f'<p><a href="{link}">{read_label}</a></p>')
+        lines.append(f'<p><a href="{link}" style="{_READ_MORE_STYLE}">{read_label}</a></p>')
     if thumb_src:
         # 本文の最初の1枚をサムネイルとして表示する
         lines.append(f'<p style="text-align: center;"><img src="{thumb_src}" alt="" style="{_THUMB_STYLE}" /></p>')
