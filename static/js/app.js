@@ -2323,6 +2323,17 @@
     }
   }
 
+  function unwrapLink(link) {
+    var parent = link.parentNode;
+    if (!parent) {
+      return;
+    }
+    while (link.firstChild) {
+      parent.insertBefore(link.firstChild, link);
+    }
+    parent.removeChild(link);
+  }
+
   function buildLinkSection(link) {
     var section = propSection("ハイパーリンク");
     var href = link.getAttribute("href") || "";
@@ -2332,18 +2343,14 @@
 
     section.appendChild(
       propRow("リンク先 URL", propInput(href, function (value) {
-        link.setAttribute("href", value);
-        editor.notifyChange();
-      }))
-    );
-    section.appendChild(
-      propRow("アンカー (#id)", propInput(linkAnchor, function (value) {
-        var anchor = value.replace(/^#/, "");
-        if (anchor) {
-          link.setAttribute("href", linkBase + "#" + anchor);
-        } else {
-          link.setAttribute("href", linkBase);
+        if (!value) {
+          unwrapLink(link);
+          editor.notifyChange();
+          toast("ハイパーリンクを削除しました", "success");
+          renderProperties(null);
+          return;
         }
+        link.setAttribute("href", value);
         editor.notifyChange();
       }))
     );
@@ -2384,6 +2391,17 @@
         editor.notifyChange();
       }))
     );
+    var anchorInput = propInput(linkAnchor, function (value) {
+      var anchor = value.replace(/^#/, "");
+      if (anchor) {
+        link.setAttribute("href", linkBase + "#" + anchor);
+      } else {
+        link.setAttribute("href", linkBase);
+      }
+      editor.notifyChange();
+    });
+    anchorInput.placeholder = "IDのみ入力";
+    section.appendChild(propRow("アンカー用のIDを指定", anchorInput));
 
     var actions = document.createElement("div");
     actions.className = "btn-row";
