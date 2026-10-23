@@ -13,7 +13,7 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.2.6.2</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.2.7.0</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
@@ -29,6 +29,19 @@
     </header>
 
     <main class="workspace" id="workspace">
+      <aside class="pane post-pane is-hidden" id="handwriting-pane">
+        <div class="pane-head">
+          <h2 class="pane-title">手書き</h2>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-handwriting-close" title="閉じる">×</button>
+        </div>
+        <div class="post-scroll">
+          <canvas id="handwriting-canvas" width="600" height="400" style="border:1px solid #ccc; background:#fff; touch-action:none; width:100%;"></canvas>
+          <div class="btn-row" style="margin-top:8px;">
+            <button type="button" class="btn" id="btn-handwriting-clear">クリア</button>
+            <button type="button" class="btn btn-primary" id="btn-handwriting-save">保存</button>
+          </div>
+        </div>
+      </aside>
       <aside class="pane post-pane is-hidden" id="post-pane">
         <div class="pane-head">
           <h2 class="pane-title">投稿</h2>
@@ -49,6 +62,7 @@
             <input class="input" type="file" id="post-photos" accept="image/*" multiple />
             <div class="post-photo-list" id="post-photo-list"></div>
           </label>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-handwriting-open" style="margin-bottom:8px;">手書きを追加</button>
           <label class="field">
             <span class="field-label">画像の長辺最大幅 (px)</span>
             <input class="input" type="number" id="post-max-side" min="64" max="8192" step="1" value="1024" />

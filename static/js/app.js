@@ -3069,6 +3069,49 @@
       renderPostPhotoList();
       el.postPhotos.value = "";
     });
+    // 手書きパネル
+    (function () {
+      var canvas = el.handwritingCanvas;
+      var ctx = canvas.getContext("2d");
+      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+      ctx.strokeStyle = "#000";
+      var drawing = false;
+      function pos(e) {
+        var r = canvas.getBoundingClientRect();
+        var src = e.touches ? e.touches[0] : e;
+        return { x: (src.clientX - r.left) * (canvas.width / r.width), y: (src.clientY - r.top) * (canvas.height / r.height) };
+      }
+      function start(e) { drawing = true; var p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); e.preventDefault(); }
+      function move(e) { if (!drawing) return; var p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); e.preventDefault(); }
+      function end() { drawing = false; }
+      canvas.addEventListener("mousedown", start);
+      canvas.addEventListener("mousemove", move);
+      canvas.addEventListener("mouseup", end);
+      canvas.addEventListener("mouseleave", end);
+      canvas.addEventListener("touchstart", start, { passive: false });
+      canvas.addEventListener("touchmove", move, { passive: false });
+      canvas.addEventListener("touchend", end);
+      el.btnHandwritingOpen.addEventListener("click", function () {
+        el.handwritingPane.classList.remove("is-hidden");
+      });
+      el.btnHandwritingClose.addEventListener("click", function () {
+        el.handwritingPane.classList.add("is-hidden");
+      });
+      el.btnHandwritingClear.addEventListener("click", function () {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      });
+      el.btnHandwritingSave.addEventListener("click", function () {
+        canvas.toBlob(function (blob) {
+          if (!blob) { toast("保存に失敗しました", "error"); return; }
+          var file = new File([blob], "handwriting.png", { type: "image/png" });
+          state.postPhotos = (state.postPhotos || []).concat([file]);
+          renderPostPhotoList();
+          el.handwritingPane.classList.add("is-hidden");
+          toast("手書き画像を添付しました", "success");
+        }, "image/png");
+      });
+    })();
     el.tree.addEventListener("contextmenu", function (event) {
       // ツリーの余白を右クリックした場合はサイトルート直下を対象にする
       event.preventDefault();
@@ -3208,6 +3251,12 @@
     el.postBody = $("post-body");
     el.postPhotos = $("post-photos");
     el.postPhotoList = $("post-photo-list");
+    el.handwritingPane = $("handwriting-pane");
+    el.handwritingCanvas = $("handwriting-canvas");
+    el.btnHandwritingOpen = $("btn-handwriting-open");
+    el.btnHandwritingClose = $("btn-handwriting-close");
+    el.btnHandwritingClear = $("btn-handwriting-clear");
+    el.btnHandwritingSave = $("btn-handwriting-save");
     el.postMaxSide = $("post-max-side");
     el.postTimestamp = $("post-timestamp");
     el.postDivider = $("post-divider");
