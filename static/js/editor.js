@@ -122,7 +122,7 @@
       },
       {
         label: "📅",
-        title: "現在の日付を挿入",
+        title: "現在の日時を挿入",
         command: "insertDate",
         icon: flatIcon(
           '<rect x="1.5" y="3" width="13" height="11.5" rx="1.5" stroke="currentColor" stroke-width="1.6" fill="none"/>' +
@@ -568,11 +568,14 @@
     this.host.focus();
   };
 
-  /* 「現在の日付を挿入」ボタン: キャレット位置に日付テキストを入れる */
-  Editor.prototype.insertCurrentDate = function () {
+  /* 投稿日時の形式 (例: 2026年10月23日（金）10:07) - 投稿パネルと共通 */
+  Editor.prototype.timestampText = function () {
     var now = new Date();
     var weekdays = ["日", "月", "火", "水", "木", "金", "土"];
-    var text =
+    var pad = function (value) {
+      return String(value).padStart(2, "0");
+    };
+    return (
       now.getFullYear() +
       "年" +
       (now.getMonth() + 1) +
@@ -580,8 +583,19 @@
       now.getDate() +
       "日（" +
       weekdays[now.getDay()] +
-      "）";
-    this.execCommand("insertText", text);
+      "）" +
+      pad(now.getHours()) +
+      ":" +
+      pad(now.getMinutes())
+    );
+  };
+
+  /* 「現在の日付を挿入」ボタン: 本文より小さく灰色の日時テキストをキャレットに入れる */
+  Editor.prototype.insertCurrentDate = function () {
+    this.execCommand(
+      "insertHTML",
+      '<p style="font-size: 0.8em; color: #888;">' + this.timestampText() + "</p>"
+    );
   };
 
   Editor.prototype.execCommand = function (command, value) {

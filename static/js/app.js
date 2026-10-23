@@ -1155,26 +1155,9 @@
     return "\n" + lines.join("\n") + "\n";
   }
 
-  /* 投稿日時の付与 (例: 2026年10月23日（金）10:07) */
+  /* 投稿日時の付与 (例: 2026年10月23日（金）10:07) - エディター側の共通実装を使う */
   function postTimestampText() {
-    var now = new Date();
-    var weekdays = ["日", "月", "火", "水", "木", "金", "土"];
-    var pad = function (value) {
-      return String(value).padStart(2, "0");
-    };
-    return (
-      now.getFullYear() +
-      "年" +
-      (now.getMonth() + 1) +
-      "月" +
-      now.getDate() +
-      "日（" +
-      weekdays[now.getDay()] +
-      "）" +
-      pad(now.getHours()) +
-      ":" +
-      pad(now.getMinutes())
-    );
+    return editor.timestampText();
   }
 
   /* コミットメッセージの付日 (投稿 YYYY-MM-DD) */
@@ -1301,17 +1284,64 @@
           });
       })
       .catch(function (error) {
-        el.postError.textContent =
+        var message =
           error.status === 404
             ? POST_PAGE + " が見つかりません。先にページを作成してください。"
             : error.message;
+        el.postError.textContent = message;
         el.postError.hidden = false;
+        /* エディター側ボタンから実行して投稿パネルが閉じている場合はトーストでも知らせる */
+        if (el.postPane.classList.contains("is-hidden")) {
+          toast(message, "error");
+        }
       })
       .finally(function () {
         busy(el.btnPostSubmit, false);
         el.btnPostSubmit.disabled = false;
         busy(el.btnPostPush, false);
         el.btnPostPush.disabled = false;
+      });
+  }
+
+  /* エディターの「保存・Push」ボタン: 現在のファイルを保存して commit + push まで行う */
+  function runEditorSavePush() {
+    if (!state.siteId || !state.path) {
+      toast("保存するファイルを選択してください。", "warn");
+      return;
+    }
+    var siteId = state.siteId;
+    var path = state.path;
+    busy(el.btnEditorSavePush, true);
+    el.btnEditorSavePush.disabled = true;
+    var saved = api("/api/sites/" + encodeURIComponent(siteId) + "/file", {
+      method: "PUT",
+      body: { path: path, content: editor.currentText() }
+    })
+      .then(function (payload) {
+        editor.markSaved();
+        toast("保存しました: " + payload.path, "success");
+        refreshTree();
+        refreshGit();
+        var message = "投稿 " + postCommitStamp();
+        return api("/api/sites/" + encodeURIComponent(siteId) + "/git/commit", {
+          method: "POST",
+          body: { message: message }
+        }).then(function (committed) {
+          toast("コミットしました: " + message + "\n" + (committed.output || "").trim(), "success");
+          return api("/api/sites/" + encodeURIComponent(siteId) + "/git/push", { method: "POST", body: {} });
+        });
+      })
+      .then(function (payload) {
+        toast("push 完了\n" + (payload.output || "").trim(), "success");
+        refreshGit();
+      });
+    saved
+      .catch(function (error) {
+        toast(error.message || String(error), "error");
+      })
+      .finally(function () {
+        busy(el.btnEditorSavePush, false);
+        el.btnEditorSavePush.disabled = false;
       });
   }
 
@@ -2355,6 +2385,7 @@
     el.btnPostPush.addEventListener("click", function () {
       submitPostDialog(true);
     });
+    el.btnEditorSavePush.addEventListener("click", runEditorSavePush);
     el.btnPostClose.addEventListener("click", function () {
       togglePane("post", false);
     });
@@ -2491,6 +2522,7 @@
     el.postError = $("post-error");
     el.btnPostSubmit = $("btn-post-submit");
     el.btnPostPush = $("btn-post-push");
+    el.btnEditorSavePush = $("btn-editor-save-push");
 
     editor = window.htmleditEditor.create({
       host: $("wysiwyg-host"),
