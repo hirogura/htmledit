@@ -171,8 +171,9 @@ def _article_source(article_inner: str) -> tuple[str, str]:
 def _snippet_parts(body_html: str) -> tuple[str, bool]:
     """本文から最初の 3 行 (最大 100 文字程度) のスニペットを取り出す."""
     lines = [line for line in _plain_text(body_html or "").split("\n") if line]
+    multiple_images = len(re.findall(r"<img\b", body_html or "", re.I)) > 1
     if not lines:
-        return "", False
+        return "", multiple_images
     kept = []
     total = 0
     truncated = False
@@ -193,6 +194,8 @@ def _snippet_parts(body_html: str) -> tuple[str, bool]:
             truncated = True
             break
     if not truncated and len(lines) > len(kept):
+        truncated = True
+    if multiple_images:
         truncated = True
     return "<br />\n  ".join(html.escape(line) for line in kept), truncated
 
