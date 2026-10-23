@@ -13,7 +13,7 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.2.7.0</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.2.7.1</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
@@ -35,7 +35,14 @@
           <button type="button" class="btn btn-ghost btn-sm" id="btn-handwriting-close" title="閉じる">×</button>
         </div>
         <div class="post-scroll">
-          <canvas id="handwriting-canvas" width="600" height="400" style="border:1px solid #ccc; background:#fff; touch-action:none; width:100%;"></canvas>
+          <canvas id="handwriting-canvas" width="900" height="600" style="border:1px solid #ccc; background:#fff; touch-action:none; width:100%; height:50vh;"></canvas>
+          <div class="btn-row" style="margin-top:8px;">
+            <button type="button" class="btn btn-ghost btn-sm" data-color="#000" style="background:#000;width:24px;height:24px;border-radius:50%;"></button>
+            <button type="button" class="btn btn-ghost btn-sm" data-color="#e00" style="background:#e00;width:24px;height:24px;border-radius:50%;"></button>
+            <button type="button" class="btn btn-ghost btn-sm" data-color="#00f" style="background:#00f;width:24px;height:24px;border-radius:50%;"></button>
+            <button type="button" class="btn btn-ghost btn-sm" data-color="#ff0" style="background:#ff0;width:24px;height:24px;border-radius:50%;"></button>
+            <button type="button" class="btn btn-ghost btn-sm" data-color="#fff" style="background:#fff;width:24px;height:24px;border-radius:50%;border:1px solid #ccc;"></button>
+          </div>
           <div class="btn-row" style="margin-top:8px;">
             <button type="button" class="btn" id="btn-handwriting-clear">クリア</button>
             <button type="button" class="btn btn-primary" id="btn-handwriting-save">保存</button>

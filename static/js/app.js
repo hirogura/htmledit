@@ -3076,6 +3076,11 @@
       ctx.lineWidth = 3;
       ctx.lineCap = "round";
       ctx.strokeStyle = "#000";
+      Array.prototype.forEach.call(document.querySelectorAll("#handwriting-pane [data-color]"), function (btn) {
+        btn.addEventListener("click", function () {
+          ctx.strokeStyle = btn.getAttribute("data-color");
+        });
+      });
       var drawing = false;
       function pos(e) {
         var r = canvas.getBoundingClientRect();
