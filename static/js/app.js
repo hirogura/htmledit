@@ -1147,7 +1147,16 @@
     return "\n" + lines.join("\n") + "\n";
   }
 
-  function submitPostDialog() {
+  /* コミットメッセージの付日 (投稿 YYYY-MM-DD) */
+  function postCommitStamp() {
+    var now = new Date();
+    var pad = function (value) {
+      return String(value).padStart(2, "0");
+    };
+    return now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate());
+  }
+
+  function submitPostDialog(withPush) {
     if (!state.siteId) {
       el.postError.textContent = "先にサイトを追加してください。";
       el.postError.hidden = false;
@@ -1180,6 +1189,8 @@
 
     busy(el.btnPostSubmit, true);
     el.btnPostSubmit.disabled = true;
+    busy(el.btnPostPush, true);
+    el.btnPostPush.disabled = true;
 
     var uploadChain = Promise.resolve();
     var references = [];
@@ -1212,7 +1223,7 @@
         });
       })
       .then(function () {
-        /* 入力内容をクリアしてから投稿パネルを閉じる */
+        /* 入力内容をクリアする */
         el.postTitle.value = "";
         el.postBody.value = "";
         state.postPhotos = [];
@@ -1220,12 +1231,35 @@
         el.postError.hidden = true;
         el.postMaxSide.value = String(POST_DEFAULT_MAX_SIDE);
         toast("投稿しました: " + POST_PAGE, "success");
-        togglePane("post", false);
         refreshTree();
         refreshGit();
         if (state.path === POST_PAGE) {
           openFile(POST_PAGE);
         }
+        if (!withPush) {
+          /* 「投稿」ボタン: 保存が済んだら投稿パネルを閉じる */
+          togglePane("post", false);
+          return null;
+        }
+        /* 「投稿・保存・Push」ボタン: 「投稿+日付」でコミットして push まで行う */
+        var message = "投稿 " + postCommitStamp();
+        return api(
+          "/api/sites/" + encodeURIComponent(siteId) + "/git/commit",
+          { method: "POST", body: { message: message } }
+        )
+          .then(function (payload) {
+            toast("コミットしました: " + message + "\n" + (payload.output || "").trim(), "success");
+            refreshGit();
+            return api(
+              "/api/sites/" + encodeURIComponent(siteId) + "/git/push",
+              { method: "POST", body: {} }
+            );
+          })
+          .then(function (payload) {
+            toast("push 完了\n" + (payload.output || "").trim(), "success");
+            refreshGit();
+            togglePane("post", false);
+          });
       })
       .catch(function (error) {
         el.postError.textContent =
@@ -1237,6 +1271,8 @@
       .finally(function () {
         busy(el.btnPostSubmit, false);
         el.btnPostSubmit.disabled = false;
+        busy(el.btnPostPush, false);
+        el.btnPostPush.disabled = false;
       });
   }
 
@@ -2274,7 +2310,12 @@
         togglePane("post", false);
       }
     });
-    el.btnPostSubmit.addEventListener("click", submitPostDialog);
+    el.btnPostSubmit.addEventListener("click", function () {
+      submitPostDialog(false);
+    });
+    el.btnPostPush.addEventListener("click", function () {
+      submitPostDialog(true);
+    });
     el.btnPostClose.addEventListener("click", function () {
       togglePane("post", false);
     });
@@ -2408,6 +2449,7 @@
     el.postMaxSide = $("post-max-side");
     el.postError = $("post-error");
     el.btnPostSubmit = $("btn-post-submit");
+    el.btnPostPush = $("btn-post-push");
 
     editor = window.htmleditEditor.create({
       host: $("wysiwyg-host"),

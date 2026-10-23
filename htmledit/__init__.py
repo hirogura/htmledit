@@ -1,6 +1,6 @@
 """htmledit - GitHub 上の静的サイトを WYSIWYG で編集するセルフホスト型 Web エディター."""
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 VERSION = __version__
 VERSION_LABEL = f"v.{__version__}"
