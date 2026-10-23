@@ -1134,7 +1134,7 @@
     return closeBody ? closeBody.index : html.length;
   }
 
-  function buildPostBlock(title, body, references) {
+  function buildPostBlock(title, body, references, withTimestamp, withDivider) {
     var lines = ["<h2>" + escapeHtml(title) + "</h2>"];
     var bodyText = (body || "").replace(/\r\n?/g, "\n").trim();
     if (bodyText) {
@@ -1144,7 +1144,37 @@
       lines.push('<img src="' + escapeHtml(reference) + '" alt="">');
       lines.push("<br>");
     });
+    if (withTimestamp) {
+      /* 本文より小さめ・灰色で投稿日時を入れる */
+      lines.push('<p style="font-size: 0.8em; color: #888;">' + postTimestampText() + "</p>");
+    }
+    if (withDivider) {
+      /* 投稿の区切り (末尾) に水平線を入れる */
+      lines.push("<hr>");
+    }
     return "\n" + lines.join("\n") + "\n";
+  }
+
+  /* 投稿日時の付与 (例: 2026年10月23日（金）10:07) */
+  function postTimestampText() {
+    var now = new Date();
+    var weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+    var pad = function (value) {
+      return String(value).padStart(2, "0");
+    };
+    return (
+      now.getFullYear() +
+      "年" +
+      (now.getMonth() + 1) +
+      "月" +
+      now.getDate() +
+      "日（" +
+      weekdays[now.getDay()] +
+      "）" +
+      pad(now.getHours()) +
+      ":" +
+      pad(now.getMinutes())
+    );
   }
 
   /* コミットメッセージの付日 (投稿 YYYY-MM-DD) */
@@ -1214,7 +1244,13 @@
         ).then(function (payload) {
           var html = payload.content || "";
           var index = findPostInsertIndex(html);
-          var block = buildPostBlock(title, body, references);
+          var block = buildPostBlock(
+            title,
+            body,
+            references,
+            el.postTimestamp.checked,
+            el.postDivider.checked
+          );
           var updated = html.slice(0, index) + block + html.slice(index);
           return api("/api/sites/" + encodeURIComponent(siteId) + "/file", {
             method: "PUT",
@@ -1230,6 +1266,9 @@
         renderPostPhotoList();
         el.postError.hidden = true;
         el.postMaxSide.value = String(POST_DEFAULT_MAX_SIDE);
+        /* オプションは既定の状態 (すべて On) に戻す */
+        el.postTimestamp.checked = true;
+        el.postDivider.checked = true;
         toast("投稿しました: " + POST_PAGE, "success");
         refreshTree();
         refreshGit();
@@ -2447,6 +2486,8 @@
     el.postPhotos = $("post-photos");
     el.postPhotoList = $("post-photo-list");
     el.postMaxSide = $("post-max-side");
+    el.postTimestamp = $("post-timestamp");
+    el.postDivider = $("post-divider");
     el.postError = $("post-error");
     el.btnPostSubmit = $("btn-post-submit");
     el.btnPostPush = $("btn-post-push");

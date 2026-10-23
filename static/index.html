@@ -13,7 +13,7 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.1.4.0</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.1.5.0</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
@@ -49,22 +49,30 @@
             <input class="input" type="file" id="post-photos" accept="image/*" multiple />
             <div class="post-photo-list" id="post-photo-list"></div>
           </label>
+          <label class="field">
+            <span class="field-label">画像の長辺最大幅 (px)</span>
+            <input class="input" type="number" id="post-max-side" min="64" max="8192" step="1" value="1024" />
+            <p class="field-hint">この幅を超える画像は自動でリサイズして保存します。</p>
+          </label>
+          <p class="dialog-error" id="post-error" hidden></p>
+          <div class="btn-row">
+            <button type="button" class="btn btn-primary" id="btn-post-submit">投稿</button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              id="btn-post-push"
+              title="投稿を保存してから「投稿+日付」でコミットし、push まで行う"
+            >投稿・保存・Push</button>
+          </div>
           <fieldset class="fieldset">
             <legend class="field-label">オプション</legend>
-            <label class="field">
-              <span class="field-label">画像の長辺最大幅 (px)</span>
-              <input class="input" type="number" id="post-max-side" min="64" max="8192" step="1" value="1024" />
-              <p class="field-hint">この幅を超える画像は自動でリサイズして保存します。</p>
+            <label class="check">
+              <input type="checkbox" id="post-timestamp" checked /><span>投稿日時を入れる</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="post-divider" checked /><span>区切り線を入れる</span>
             </label>
           </fieldset>
-          <p class="dialog-error" id="post-error" hidden></p>
-          <button type="button" class="btn btn-primary btn-block" id="btn-post-submit">投稿</button>
-          <button
-            type="button"
-            class="btn btn-block"
-            id="btn-post-push"
-            title="投稿を保存してから「投稿+日付」でコミットし、push まで行う"
-          >投稿・保存・Push</button>
         </form>
       </aside>
 
