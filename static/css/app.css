@@ -171,6 +171,8 @@ body {
 .workspace > .pane {
   flex: 0 0 auto;
   width: var(--pane-w, auto);
+  resize: horizontal;
+  overflow: auto;
 }
 
 .workspace > .post-pane {
