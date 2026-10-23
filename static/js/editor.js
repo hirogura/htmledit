@@ -95,6 +95,11 @@
     ],
     [
       {
+        label: "ID",
+        title: "ID を設定 (リンクのアンカー先)",
+        command: "setElementId"
+      },
+      {
         label: "🔗",
         title: "リンク",
         command: "createLink",
@@ -246,6 +251,10 @@
         button.addEventListener("click", function () {
           if (item.command === "insertImage" && self.onInsertImage) {
             self.onInsertImage();
+            return;
+          }
+          if (item.command === "setElementId") {
+            self.setElementId();
             return;
           }
           if (item.command === "insertDate") {
@@ -596,6 +605,54 @@
       "insertHTML",
       '<p style="font-size: 0.8em; color: #888;">' + this.timestampText() + "</p>"
     );
+  };
+
+  /* 「ID を設定」ボタン: キャレット位置のブロック要素に id 属性を設定/解除する */
+  Editor.prototype.setElementId = function () {
+    if (this.mode !== "wysiwyg") {
+      this.setMode("wysiwyg");
+    }
+    this.restoreSelection();
+    var selection = window.getSelection();
+    var node = selection && selection.rangeCount > 0 ? selection.getRangeAt(0).startContainer : null;
+    var element = node ? (node.nodeType === 1 ? node : node.parentElement) : null;
+    element = this._closestBlockElement(element);
+    if (!element) {
+      this.setStatus("ID を設定する位置にカーソルを置いてください");
+      return;
+    }
+    var current = element.getAttribute("id") || "";
+    var value = window.prompt("ID を設定 (リンクのアンカー先)。空欄で削除", current);
+    if (value === null) {
+      return;
+    }
+    value = value.trim();
+    if (value) {
+      element.setAttribute("id", value);
+    } else {
+      element.removeAttribute("id");
+    }
+    this._markDirty();
+    this.updatePreview();
+  };
+
+  var BLOCK_TAGS = ["P", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "BLOCKQUOTE", "PRE", "DIV", "SECTION", "FIGURE", "TD", "TH"];
+
+  Editor.prototype._closestBlockElement = function (element) {
+    var node = element;
+    var fallback = null;
+    while (node && node !== this.host) {
+      if (node.nodeType === 1) {
+        if (BLOCK_TAGS.indexOf(node.tagName) >= 0) {
+          return node;
+        }
+        if (!fallback) {
+          fallback = node;
+        }
+      }
+      node = node.parentNode;
+    }
+    return fallback;
   };
 
   Editor.prototype.execCommand = function (command, value) {
