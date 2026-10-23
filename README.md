@@ -213,13 +213,14 @@ public/images/2026/10/22/photo.png
 | 項目 | 説明 |
 | --- | --- |
 | サイトタイトル | `<title>` に反映される |
-| サイトアイコン | `<link rel="icon">` の href に反映される (パス / URL を指定) |
+| サイトアイコン | `<link rel="icon">` の href に反映される。index.html からの相対パス (`public/` 直下なら「favicon.svg」) か URL を指定。「public/…」形式で入力した場合は自動で補正する |
 | 上部固定メニュー | 「ラベル \| URL」を 1 行に 1 項目ずつ書くと、`<body>` の直後に `position: sticky` の固定メニュー (`<header class="site-topbar">`) が入る |
 
 - 「設定を適用」ボタンで、既存の `public/index.html` に上述の内容を反映する
 - 「index.html を作成」ボタンで、モダンなフラットデザインのサンプル HTML を
-  `public/index.html` に保存する (既存ファイルは `index-bk.html` にリネームして退避。
-  `index-bk.html` が既にある場合は `index-bk-1.html`、`index-bk-2.html`…と連番になる)
+  `public/index.html` に保存する (既存ファイルは   `index-bk.html` にリネームして退避 (既存ファイルと同じフォルダ内でリネームするため、
+  実際は `public/index-bk.html` になる)。`index-bk.html` が既にある場合は
+  `index-bk-1.html`、`index-bk-2.html`…と連番になる)
 - サンプルには投稿の受け皿として `<article class="posts">` が含まれ、
   投稿パネルの記事はここに新しい順で追加される
 - 設定値は既存の `public/index.html` から読み込んで初期表示する

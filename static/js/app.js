@@ -1493,7 +1493,7 @@
 
     if (settings.icon) {
       var iconLink = '<link rel="icon" href="' + escapeHtml(settings.icon) + '" />';
-      var iconRe = /<link\b[^>]*rel=["']?[^>]*icon["']?[^>]*>/i;
+      var iconRe = iconLinkPattern();
       if (iconRe.test(output)) {
         output = output.replace(iconRe, iconLink);
       } else if (/<\/title\s*>/i.test(output)) {
@@ -1529,6 +1529,31 @@
     return lines.join("\n");
   }
 
+  /* icon タグ (rel に icon を含む <link>) を探すパターン */
+  function iconLinkPattern() {
+    return /<link\b(?=[^>]*\brel\b)(?=[^>]*\bicon\b)[^>]*>/i;
+  }
+
+  /*
+   * アイコンの指定を index.html からの相対パス / URL に正規化する。
+   * 「public/favicon.svg」のようなリポジトリルート基準のパスは、
+   * ページ (public/index.html) から見ると「favicon.svg」になる。
+   */
+  function normalizeIconReference(value) {
+    var text = (value || "").trim();
+    if (!text) {
+      return text;
+    }
+    if (/^(https?:)?\/\//i.test(text) || /^data:/i.test(text)) {
+      return text;
+    }
+    var pageDir = parentDir(POST_PAGE);
+    if (pageDir && text.indexOf(pageDir + "/") === 0) {
+      return text.slice(pageDir.length + 1);
+    }
+    return text;
+  }
+
   function openSiteSettings() {
     if (!state.siteId) {
       toast("先にサイトを追加してください。", "warn");
@@ -1552,7 +1577,7 @@
         if (titleMatch) {
           el.settingsTitle.value = titleMatch[1].trim();
         }
-        var iconTag = /<link\b[^>]*rel=["']?[^>]*icon["']?[^>]*>/i.exec(html);
+        var iconTag = iconLinkPattern().exec(html);
         if (iconTag) {
           var hrefMatch = /href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(iconTag[0]);
           if (hrefMatch) {
@@ -1586,7 +1611,7 @@
     }
     var settings = {
       title: el.settingsTitle.value.trim(),
-      icon: el.settingsIcon.value.trim(),
+      icon: normalizeIconReference(el.settingsIcon.value),
       items: parseMenuItems(el.settingsMenu.value)
     };
 
@@ -1605,7 +1630,9 @@
       )
         .then(function () {
           var attempt = function (index) {
-            var name = index === 0 ? "index-bk.html" : "index-bk-" + index + ".html";
+            var name =
+              (parentDir(POST_PAGE) ? parentDir(POST_PAGE) + "/" : "") +
+              (index === 0 ? "index-bk.html" : "index-bk-" + index + ".html");
             return api("/api/sites/" + encodeURIComponent(siteId) + "/rename", {
               method: "POST",
               body: { from: POST_PAGE, to: name }

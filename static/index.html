@@ -13,7 +13,7 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.1.8.1</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.1.8.2</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
@@ -252,9 +252,13 @@
         </label>
         <label class="field">
           <span class="field-label">
-            サイトアイコン (favicon, パス / URL)
+            サイトアイコン (favicon)
           </span>
-          <input class="input" type="text" id="settings-icon" placeholder="public/favicon.svg" />
+          <input class="input" type="text" id="settings-icon" placeholder="favicon.svg" />
+          <p class="field-hint">
+            index.html からの相対パス (public/ 直下なら「favicon.svg」) か URL を指定します。
+            「public/…」で始まるリポジトリルート基準のパスは自動で補正されます。
+          </p>
         </label>
         <label class="field">
           <span class="field-label">上部固定メニュー</span>
