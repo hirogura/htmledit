@@ -13,7 +13,7 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.1.8.2</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.1.8.3</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
@@ -261,10 +261,19 @@
           </p>
         </label>
         <label class="field">
-          <span class="field-label">上部固定メニュー</span>
-          <textarea class="input" id="settings-menu" rows="5" spellcheck="false" placeholder="1 行につき 1 項目&#10;ホーム | /&#10;投稿 | /#new"></textarea>
-          <p class="field-hint">「ラベル | リンク先」の形式で 1 行に 1 項目ずつ書くと、&lt;body&gt; の最初に固定表示のメニュー (position: sticky) が入ります。</p>
+          <span class="field-label">サイトの説明</span>
+          <input class="input" type="text" id="settings-desc" placeholder="サイトの一行説明" />
+          <p class="field-hint">上部メニューと一緒に固定表示されます (空欄で非表示)。</p>
         </label>
+        <fieldset class="fieldset">
+          <legend class="field-label">上部固定メニュー</legend>
+          <div class="menu-rows" id="settings-menu-rows"></div>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-settings-menu-add">+ 項目を追加</button>
+          <p class="field-hint">
+            各項目の「項目名」と「リンク先」を入力してください。
+            サイトタイトル・説明とともにメニュー全体が上部に固定表示 (position: sticky) されます。
+          </p>
+        </fieldset>
         <p class="dialog-error" id="settings-error" hidden></p>
         <div class="dialog-actions">
           <button type="button" class="btn" id="btn-settings-close">閉じる</button>

@@ -212,11 +212,13 @@ public/images/2026/10/22/photo.png
 
 | 項目 | 説明 |
 | --- | --- |
-| サイトタイトル | `<title>` に反映される |
+| サイトタイトル | `<title>` と、ヒーロー部の `<h1>` (大見出し) に反映される |
+| サイトの説明 | 上部メニュー内のサイトタイトルの下に小さく表示される (`site-brand-desc`)。空欄なら非表示 |
 | サイトアイコン | `<link rel="icon">` の href に反映される。index.html からの相対パス (`public/` 直下なら「favicon.svg」) か URL を指定。「public/…」形式で入力した場合は自動で補正する |
-| 上部固定メニュー | 「ラベル \| URL」を 1 行に 1 項目ずつ書くと、`<body>` の直後に `position: sticky` の固定メニュー (`<header class="site-topbar">`) が入る |
+| 上部固定メニュー | 「項目名」「リンク先」を入力して作る (`+ 項目を追加` で行を追加)。`<body>` の直後に `position: sticky` の固定メニュー (`<header class="site-topbar">`) が入り、サイトタイトルと説明もメニューと一緒に固定表示されるため、スクロールしても見えなくならない |
 
 - 「設定を適用」ボタンで、既存の `public/index.html` に上述の内容を反映する
+  (タイトルは `<title>` / ヒーローの `<h1>`、説明は上部メニューの `site-brand-desc` に反映)
 - 「index.html を作成」ボタンで、モダンなフラットデザインのサンプル HTML を
   `public/index.html` に保存する (既存ファイルは   `index-bk.html` にリネームして退避 (既存ファイルと同じフォルダ内でリネームするため、
   実際は `public/index-bk.html` になる)。`index-bk.html` が既にある場合は
@@ -224,7 +226,8 @@ public/images/2026/10/22/photo.png
 - サンプルには投稿の受け皿として `<article class="posts">` が含まれ、
   投稿パネルの記事はここに新しい順で追加される
 - 設定値は既存の `public/index.html` から読み込んで初期表示する
-  (メニューは `site-topbar` 内のリンクを解析して戻すので、手で編集した内容も引き継げる)
+  (メニューは `site-topbar` 内のリンクを解析して戻すので、手で編集した内容も引き継げる。
+  「サイトの説明」は上部メニューの `site-brand-desc`、無ければヒーロー部の最初の段落から読み込む)
 
 ## 記事投稿
 

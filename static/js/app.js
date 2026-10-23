@@ -15,7 +15,8 @@
     treeEntries: [],
     editingSiteId: null,
     opencodeStarted: false,
-    postPhotos: []
+    postPhotos: [],
+    settingsMenuRows: []
   };
 
   var el = {};
@@ -1365,49 +1366,110 @@
     );
   }
 
-  /* 「ラベル | URL」を 1 行ずつ解釈してメニューデータにする */
-  function parseMenuItems(text) {
-    var items = [];
-    (text || "")
-      .replace(/\r\n?/g, "\n")
-      .split("\n")
-      .forEach(function (line) {
-        var value = line.trim();
-        if (!value) {
-          return;
-        }
-        var pieces = value.split("|");
-        var label = (pieces[0] || "").trim();
-        var href = (pieces[1] || "").trim() || "#";
-        if (!label) {
-          return;
-        }
-        items.push({ label: label, href: href });
+  /* メニュー行入力欄 (「項目名」「リンク先」の入力欄ペア) を描画する */
+  function renderMenuRows(rows) {
+    var wrap = el.settingsMenuRows;
+    wrap.innerHTML = "";
+    rows.forEach(function (row, index) {
+      var line = document.createElement("div");
+      line.className = "menu-row";
+
+      var label = document.createElement("input");
+      label.className = "input";
+      label.type = "text";
+      label.placeholder = "項目名";
+      label.value = row.label || "";
+      label.addEventListener("change", function () {
+        rows[index].label = label.value;
       });
+
+      var href = document.createElement("input");
+      href.className = "input";
+      href.type = "text";
+      href.placeholder = "リンク先";
+      href.value = row.href || "";
+      href.addEventListener("change", function () {
+        rows[index].href = href.value;
+      });
+
+      var remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "post-photo-remove";
+      remove.textContent = "×";
+      remove.title = "この項目を削除";
+      remove.addEventListener("click", function () {
+        rows.splice(index, 1);
+        renderMenuRows(rows);
+      });
+
+      line.appendChild(label);
+      line.appendChild(href);
+      line.appendChild(remove);
+      wrap.appendChild(line);
+    });
+  }
+
+  function addMenuRow() {
+    state.settingsMenuRows.push({ label: "", href: "" });
+    renderMenuRows(state.settingsMenuRows);
+    var rows = el.settingsMenuRows.querySelectorAll(".menu-row input");
+    if (rows.length) {
+      rows[rows.length - 2].focus();
+    }
+  }
+
+  /* 入力欄からメニュー項目を回収する (項目名が空の行は無視) */
+  function readMenuRows() {
+    var items = [];
+    Array.prototype.forEach.call(el.settingsMenuRows.children, function (line) {
+      var inputs = line.querySelectorAll("input");
+      if (!inputs.length) {
+        return;
+      }
+      var label = inputs[0].value.trim();
+      var href = inputs[1].value.trim();
+      if (!label) {
+        return;
+      }
+      items.push({ label: label, href: href || "#" });
+    });
     return items;
   }
 
-  function buildTopbarHtml(items) {
-    if (!items.length) {
+  function buildTopbarHtml(items, brand) {
+    var hasBrand = !!(brand && brand.title);
+    if (!items.length && !hasBrand) {
       return "";
     }
-    var links = items
-      .map(function (item) {
-        return '      <a href="' + escapeHtml(item.href) + '">' + escapeHtml(item.label) + "</a>";
-      })
-      .join("\n");
-    return (
-      '<header class="' + TOPBAR_CLASS + '">\n' +
-      '    <nav aria-label="メインメニュー">\n' +
-      links +
-      "\n    </nav>\n  </header>"
-    );
+    var parts = ['<header class="' + TOPBAR_CLASS + '">'];
+    if (hasBrand) {
+      parts.push('    <div class="site-brand">');
+      parts.push(
+        '      <span class="site-brand-title">' + escapeHtml(brand.title) + "</span>"
+      );
+      if (brand.desc) {
+        parts.push('      <span class="site-brand-desc">' + escapeHtml(brand.desc) + "</span>");
+      }
+      parts.push("    </div>");
+    }
+    if (items.length) {
+      parts.push('    <nav aria-label="メインメニュー">');
+      items.forEach(function (item) {
+        parts.push(
+          '      <a href="' + escapeHtml(item.href) + '">' + escapeHtml(item.label) + "</a>"
+        );
+      });
+      parts.push("    </nav>");
+    }
+    parts.push("  </header>");
+    return parts.join("\n");
   }
 
   /* サンプル HTML を生成する (投稿用の container / hero 構成を含む) */
   function buildSampleHtml(settings) {
     var title = settings.title || "サイト";
-    var menuHtml = buildTopbarHtml(settings.items);
+    var brand = { title: title, desc: (settings.desc || "").trim() };
+    var menuHtml = buildTopbarHtml(settings.items, brand);
     var iconLink = settings.icon
       ? '\n    <link rel="icon" href="' + escapeHtml(settings.icon) + '" />'
       : "";
@@ -1420,12 +1482,17 @@
       "      top: 0;",
       "      z-index: 10;",
       "      display: flex;",
+      "      flex-wrap: wrap;",
       "      align-items: center;",
+      "      gap: 4px 16px;",
       "      padding: 10px 20px;",
       "      background: #fff;",
       "      border-bottom: 1px solid #e2e6ea;",
       "    }",
-      '    .site-topbar nav { display: flex; flex-wrap: wrap; gap: 18px; }',
+      "    .site-brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }",
+      "    .site-brand-title { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+      "    .site-brand-desc { color: #8a929c; font-size: 12px; }",
+      '    .site-topbar nav { display: flex; flex-wrap: wrap; gap: 18px; margin-left: auto; }',
       '    .site-topbar a { color: #37414c; text-decoration: none; font-size: 14px; }',
       '    .site-topbar a:hover { color: #2563eb; }',
       "",
@@ -1461,7 +1528,7 @@
       '  <main class="container">',
       '    <section class="hero">',
       "      <h1>" + escapeHtml(title) + "</h1>",
-      "      <p>ここにサイトの説明を書きます。</p>",
+      "      <p>" + escapeHtml(brand.desc || "ここにサイトの説明を書きます。") + "</p>",
       "    </section>",
       "",
       '    <article class="posts">',
@@ -1477,9 +1544,13 @@
     return lines.join("\n");
   }
 
-  /* 既存 html にタイトル / アイコン / 上部メニューを反映して返す */
+  /* 既存 html にタイトル / 説明 / アイコン / 上部メニューを反映して返す */
   function applyHeadSettings(html, settings) {
     var output = html;
+    var brand = {
+      title: (settings.title || "").trim(),
+      desc: (settings.desc || "").trim()
+    };
 
     if (settings.title) {
       var safeTitle = escapeHtml(settings.title);
@@ -1488,6 +1559,11 @@
         output = output.replace(titleRe, "<title>" + safeTitle + "</title>");
       } else if (/<head\b[^>]*>/i.test(output)) {
         output = output.replace(/<head\b[^>]*>/i, "$&\n    <title>" + safeTitle + "</title>");
+      }
+      /* ヒーロー部の大見出し <h1> もタイトルに揃える */
+      var heroH1Re = /(<section\b[^>]*class=["'][^"']*\bhero\b[^"']*["'][^>]*>[\s\S]*?<h1[^>]*>)([\s\S]*?)(<\/h1\s*>)/i;
+      if (heroH1Re.test(output)) {
+        output = output.replace(heroH1Re, "$1" + safeTitle + "$3");
       }
     }
 
@@ -1503,9 +1579,9 @@
       }
     }
 
-    /* 既存の上部メニューを置き換える (メニューなしになったら削除) */
+    /* 既存の上部メニューを置き換える (タイトル・説明も出力する。両方空なら削除) */
     output = output.replace(topbarHeaderPattern(), "");
-    var menuHtml = buildTopbarHtml(settings.items);
+    var menuHtml = buildTopbarHtml(settings.items, brand);
     if (menuHtml) {
       output = output.replace(/<body\b[^>]*>/i, function (bodyTag) {
         return bodyTag + "\n  " + menuHtml;
@@ -1514,19 +1590,36 @@
     return output;
   }
 
-  /* 上部メニューのリンクを「ラベル | URL」形式に戻してフィールドに詰める */
-  function readTopbarItemsFromHtml(html) {
+  /* 上部メニューのリンクをメニュー行のデータ (rows) に戻す */
+  function rowsFromTopbar(html) {
     var match = topbarHeaderPattern().exec(html);
     if (!match) {
-      return "";
+      return [];
     }
-    var lines = [];
+    var rows = [];
     var anchorRe = /<a\b[^>]*href=["']?([^"'>\s]+)["']?[^>]*>([\s\S]*?)<\/a\s*>/gi;
     var anchor;
     while ((anchor = anchorRe.exec(match[0]))) {
-      lines.push(anchor[2].trim() + " | " + anchor[1]);
+      rows.push({ label: anchor[2].trim(), href: anchor[1] });
     }
-    return lines.join("\n");
+    return rows;
+  }
+
+  /* サイトの説明を既存 html (上部メニューの説明 or ヒーロー部の最初の段落) から読み取る */
+  function readSiteDescriptionFromHtml(html) {
+    var topbar = topbarHeaderPattern().exec(html);
+    if (topbar) {
+      var brandDesc = /<span\b[^>]*class=["'][^"']*site-brand-desc[^"']*["'][^>]*>([\s\S]*?)<\/span\s*>/i.exec(
+        topbar[0]
+      );
+      if (brandDesc) {
+        return brandDesc[1].trim();
+      }
+    }
+    var hero = /<section\b[^>]*class=["'][^"']*\bhero\b[^"']*["'][^>]*>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p\s*>/i.exec(
+      html
+    );
+    return hero ? hero[1].trim() : "";
   }
 
   /* icon タグ (rel に icon を含む <link>) を探すパターン */
@@ -1562,8 +1655,10 @@
     var site = currentSite();
     el.settingsDialogTitle.textContent = "サイト設定 - " + (site ? site.name : "");
     el.settingsTitle.value = "";
+    el.settingsDesc.value = "";
     el.settingsIcon.value = "";
-    el.settingsMenu.value = "";
+    state.settingsMenuRows = [];
+    renderMenuRows(state.settingsMenuRows);
     el.settingsError.hidden = true;
     el.settingsDialog.showModal();
     /* 既存の index.html から現在の設定値を取り込む */
@@ -1584,9 +1679,14 @@
             el.settingsIcon.value = hrefMatch[1] || hrefMatch[2] || hrefMatch[3] || "";
           }
         }
-        var menuText = readTopbarItemsFromHtml(html);
-        if (menuText) {
-          el.settingsMenu.value = menuText;
+        var rows = rowsFromTopbar(html);
+        if (rows.length) {
+          state.settingsMenuRows = rows;
+          renderMenuRows(state.settingsMenuRows);
+        }
+        var desc = readSiteDescriptionFromHtml(html);
+        if (desc) {
+          el.settingsDesc.value = desc;
         }
       })
       .catch(function () {
@@ -1611,8 +1711,9 @@
     }
     var settings = {
       title: el.settingsTitle.value.trim(),
+      desc: el.settingsDesc.value.trim(),
       icon: normalizeIconReference(el.settingsIcon.value),
-      items: parseMenuItems(el.settingsMenu.value)
+      items: readMenuRows()
     };
 
     var buttons = [el.btnSettingsCreate, el.btnSettingsApply];
@@ -2713,6 +2814,7 @@
     });
     el.btnRefreshTree.addEventListener("click", refreshTree);
     el.btnSiteSettings.addEventListener("click", openSiteSettings);
+    el.btnSettingsMenuAdd.addEventListener("click", addMenuRow);
     el.btnSettingsApply.addEventListener("click", function () {
       submitSiteSettings("apply");
     });
@@ -2896,8 +2998,10 @@
     el.settingsForm = $("settings-form");
     el.settingsDialogTitle = $("settings-dialog-title");
     el.settingsTitle = $("settings-title");
+    el.settingsDesc = $("settings-desc");
     el.settingsIcon = $("settings-icon");
-    el.settingsMenu = $("settings-menu");
+    el.settingsMenuRows = $("settings-menu-rows");
+    el.btnSettingsMenuAdd = $("btn-settings-menu-add");
     el.settingsError = $("settings-error");
     el.btnSettingsCreate = $("btn-settings-create");
     el.btnSettingsApply = $("btn-settings-apply");

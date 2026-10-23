@@ -887,6 +887,24 @@ textarea.input {
   line-height: 1;
 }
 
+.menu-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.menu-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.menu-row .input {
+  flex: 1 1 50%;
+  min-width: 0;
+}
+
 .toast-container {
   position: fixed;
   right: 16px;
