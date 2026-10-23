@@ -266,6 +266,10 @@
               return;
             }
           }
+          if (item.command === "handwriting" && self.onHandwriting) {
+            self.onHandwriting();
+            return;
+          }
           if (item.command === "setElementId") {
             self.setElementId();
             return;
