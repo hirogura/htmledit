@@ -262,7 +262,10 @@ def _post_page_relpath(post_id: str) -> str:
 def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: bool, with_divider: bool, link: str, thumb_src: str = "") -> str:
     snippet, truncated = _snippet_parts(body_html)
     # タイトルは青字・下線にしない (シンプルに本文色で)
-    lines = [f'<h2><a href="{link}" style="{_TITLE_LINK_STYLE}">{html.escape(title or "無題")}</a></h2>']
+    lines = []
+    if thumb_src:
+        lines.append(f'<p style="text-align: right; margin: 0 0 8px;"><img src="{thumb_src}" alt="" style="{_THUMB_STYLE}" /></p>')
+    lines.append(f'<h2><a href="{link}" style="{_TITLE_LINK_STYLE}">{html.escape(title or "無題")}</a></h2>')
     if snippet:
         if truncated:
             lines.append(f'<p>{snippet}<a href="{link}" style="{_READ_MORE_STYLE}">続きを読む</a></p>')
@@ -270,9 +273,6 @@ def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: boo
             lines.append(f'<p>{snippet}</p>')
     elif truncated:
         lines.append(f'<p><a href="{link}" style="{_READ_MORE_STYLE}">続きを読む</a></p>')
-    if thumb_src:
-        # 本文の最初の1枚をサムネイルとして表示する
-        lines.append(f'<p style="text-align: center;"><img src="{thumb_src}" alt="" style="{_THUMB_STYLE}" /></p>')
     if with_timestamp:
         stamp = _timestamp_text(post_id)
         if stamp:
