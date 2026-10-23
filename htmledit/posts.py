@@ -29,7 +29,7 @@ INDEX_PAGE = "public/index.html"
 POST_PAGE_PREFIX = "public/posts"
 
 _SMALL_TEXT_STYLE = "font-size: 0.8em; color: #888;"
-_THUMB_STYLE = "max-width: 100%; width: 280px; height: auto; border-radius: 8px;"
+_THUMB_STYLE = "height: 120px; width: auto; border-radius: 8px; float: right; margin: 0 0 8px 12px;"
 _TITLE_LINK_STYLE = "color: inherit; text-decoration: none;"
 _READ_MORE_STYLE = (
     "display: inline-block; padding: 3px 14px; border: 1px solid #d5dbe2;"
@@ -261,13 +261,15 @@ def _post_page_relpath(post_id: str) -> str:
 
 def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: bool, with_divider: bool, link: str, thumb_src: str = "") -> str:
     snippet, truncated = _snippet_parts(body_html)
-    read_label = "... [続きを読む]" if truncated else "[続きを読む]"
     # タイトルは青字・下線にしない (シンプルに本文色で)
     lines = [f'<h2><a href="{link}" style="{_TITLE_LINK_STYLE}">{html.escape(title or "無題")}</a></h2>']
     if snippet:
-        lines.append(f'<p>{snippet}<a href="{link}" style="{_READ_MORE_STYLE}">{read_label}</a></p>')
-    else:
-        lines.append(f'<p><a href="{link}" style="{_READ_MORE_STYLE}">{read_label}</a></p>')
+        if truncated:
+            lines.append(f'<p>{snippet}<a href="{link}" style="{_READ_MORE_STYLE}">続きを読む</a></p>')
+        else:
+            lines.append(f'<p>{snippet}</p>')
+    elif truncated:
+        lines.append(f'<p><a href="{link}" style="{_READ_MORE_STYLE}">続きを読む</a></p>')
     if thumb_src:
         # 本文の最初の1枚をサムネイルとして表示する
         lines.append(f'<p style="text-align: center;"><img src="{thumb_src}" alt="" style="{_THUMB_STYLE}" /></p>')

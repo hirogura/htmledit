@@ -1484,10 +1484,6 @@
     lines.push(
       "",
       '  <main class="container">',
-      '    <section class="hero">',
-      "      <h1>" + escapeHtml(title) + "</h1>",
-      "      <p>" + escapeHtml(brand.desc || "ここにサイトの説明を書きます。") + "</p>",
-      "    </section>",
       "",
       '    <article class="posts">',
       "      <!-- 投稿パネルの記事はこの直下に追加される (新しい記事が上に積まれる) -->",
