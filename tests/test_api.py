@@ -685,13 +685,17 @@ class ApiTestCase(unittest.TestCase):
         body_html = "<p>これは記事{i:02d}の本文です。...1行目\nこれは記事{i:02d}の2行目\nこれは記事{i:02d}の3行目\nこれは記事{i:02d}の4行目</p>\n"
         for number in range(1, 22):
             post_id = f"20261023-{number:06d}"
+            payload_body = body_html.format(i=number)
+            if number > 1:
+                # 記事 2 (=一覧では最古) 以降は画像を含める: 最初の1枚がサムネイルになる
+                payload_body += '<img src="../images/img{i:02d}.jpg" alt="">\n'.format(i=number)
             status, payload = self.request(
                 "POST",
                 f"/api/sites/{site_id}/posts",
                 {
                     "id": post_id,
                     "title": f"記事 {number:02d}",
-                    "bodyHtml": body_html.format(i=number),
+                    "bodyHtml": payload_body,
                 },
             )
             self.assertEqual(status, 200, payload)
@@ -718,12 +722,19 @@ class ApiTestCase(unittest.TestCase):
         )
         self.assertNotIn("20261023-000001", index)
 
+        # 本文に画像がある投稿は最初の1枚がサムネイルとして表示される
+        # (posts/ 基準の相対パス ../images/... は index 基準に補正される)
+        self.assertIn('<img src="images/img21.jpg"', index)
+        self.assertEqual(index.count("<img "), 20)
+
         # 2 ページ目に残りの投稿と「前へ」
         page2 = (repo / "public/page/2.html").read_text("utf-8")
         self.assertEqual(page2.count("data-post-id"), 1)
         self.assertIn("../posts/20261023-000001.html", page2)
         self.assertIn("前へ", page2)
         self.assertIn("../index.html", page2)
+        # 画像の無い投稿 (記事 1) にはサムネイルが付かない
+        self.assertNotIn("<img ", page2)
 
         # 個別ページの保存は一覧ページに同期される
         edited = post_page.replace("記事 21</h1>", "記事 21 (修正)</h1>").replace(

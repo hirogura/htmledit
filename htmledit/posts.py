@@ -3,6 +3,7 @@
 - 個別ページ: public/posts/YYYYMMDD-HHMMSS.html (タイトル / 本文全文 / 写真 を含む)
 - 一覧ページ: public/index.html と public/page/2.html 以降 (スニペット article を最大 20 件ずつ)
 - スニペットは data-post-id="YYYYMMDD-HHMMSS" で識別し、個別ページの保存・削除時に再構築する
+- 本文に画像がある場合は最初の1枚をサムネイルとして一覧に表示する
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ INDEX_PAGE = "public/index.html"
 POST_PAGE_PREFIX = "public/posts"
 
 _SMALL_TEXT_STYLE = "font-size: 0.8em; color: #888;"
+_THUMB_STYLE = "max-width: 100%; width: 280px; height: auto; border-radius: 8px;"
 _BACK_LINK_LABEL = "一覧ページへ戻る"
 _NAV_STYLE = (
     "display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: center;"
@@ -214,11 +216,38 @@ def _parse_flags(attrs: str) -> tuple[bool, bool]:
     return flag("timestamp"), flag("divider")
 
 
+def _first_image_src(body_html: str) -> str:
+    """本文 HTML から最初の <img> の src を取り出す (なければ空文字)."""
+    match = re.search(r'<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s>]+))', body_html, re.I)
+    if not match:
+        return ""
+    return (match.group(1) or match.group(2) or match.group(3) or "").strip()
+
+
+def _thumb_src(src: str, on_index: bool) -> str:
+    """個別ページ (posts/) 基準の画像パスを一覧ページの位置に合わせて補正する.
+
+    - index.html (public/): ../images/a.jpg → images/a.jpg
+    - page/N.html (public/page/): ../images/a.jpg のまま
+    外部 URL / パス解決不能なものは空文字でサムネイルを無効化する。
+    """
+    text = (src or "").strip()
+    if not text or text.startswith("#") or text.startswith("//") or text.startswith(r"\\"):
+        return ""
+    if re.match(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:", text):
+        return text
+    if text.startswith("/"):
+        return ""  # サイトルート相対はサブディレクトリ配置で壊れ得るため諦める
+    if on_index:
+        return text[3:] if text.startswith("../") else "posts/" + text
+    return text if text.startswith("../") else "../posts/" + text
+
+
 # --------------------------------------------------------------------------
 # HTML 生成
 # --------------------------------------------------------------------------
 
-def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: bool, with_divider: bool, link: str) -> str:
+def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: bool, with_divider: bool, link: str, thumb_src: str = "") -> str:
     snippet, truncated = _snippet_parts(body_html)
     read_label = "... [続きを読む]" if truncated else "[続きを読む]"
     lines = [f'<h2><a href="{link}">{html.escape(title or "無題")}</a></h2>']
@@ -226,6 +255,9 @@ def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: boo
         lines.append(f'<p>{snippet}<a href="{link}">{read_label}</a></p>')
     else:
         lines.append(f'<p><a href="{link}">{read_label}</a></p>')
+    if thumb_src:
+        # 本文の最初の1枚をサムネイルとして表示する
+        lines.append(f'<p style="text-align: center;"><img src="{thumb_src}" alt="" style="{_THUMB_STYLE}" /></p>')
     if with_timestamp:
         stamp = _timestamp_text(post_id)
         if stamp:
@@ -424,6 +456,7 @@ def _collect_posts(root: Path, index_html: str) -> list[dict]:
                 "id": post_id,
                 "title": title,
                 "body": body_html,
+                "thumb": _first_image_src(body_html),
                 "timestamp": timestamp,
                 "divider": divider,
                 "fallback_inner": None,
@@ -445,6 +478,8 @@ def _collect_posts(root: Path, index_html: str) -> list[dict]:
                 "id": block["id"],
                 "title": title,
                 "body": body_html,
+                # 手書きブロックは index 基準の相対パスが分からないためサムネイルにしない
+                "thumb": "",
                 "timestamp": timestamp,
                 "divider": divider,
                 "fallback_inner": block["inner"] if not title else None,
@@ -453,8 +488,9 @@ def _collect_posts(root: Path, index_html: str) -> list[dict]:
     return [posts[post_id] for post_id in sorted(posts, reverse=True)]
 
 
-def _snippet_for(entry: dict, link: str) -> str:
+def _snippet_for(entry: dict, link: str, on_index: bool) -> str:
     """一覧に表示する article の中身を返す."""
+    thumb = _thumb_src(entry.get("thumb") or "", on_index)
     if entry["title"]:
         return _snippet_inner(
             entry["id"],
@@ -463,10 +499,11 @@ def _snippet_for(entry: dict, link: str) -> str:
             entry.get("timestamp", True),
             entry.get("divider", True),
             link,
+            thumb,
         )
     if entry.get("fallback_inner"):
         return entry["fallback_inner"]
-    return _snippet_inner(entry["id"], "", entry.get("body") or "", entry.get("timestamp", True), entry.get("divider", True), link)
+    return _snippet_inner(entry["id"], "", entry.get("body") or "", entry.get("timestamp", True), entry.get("divider", True), link, thumb)
 
 
 def rebalance(site: Site) -> dict:
@@ -494,7 +531,7 @@ def rebalance(site: Site) -> dict:
         for index, chunk in enumerate(chunks):
             on_index = index == 0
             prefix = "posts/" if on_index else "../posts/"
-            rendered = [{"id": entry["id"], "inner": _snippet_for(entry, prefix + entry["id"] + ".html")} for entry in chunk]
+            rendered = [{"id": entry["id"], "inner": _snippet_for(entry, prefix + entry["id"] + ".html", on_index)} for entry in chunk]
             swapped = index_html[:open_end] + _list_inner(unmanaged, rendered, index + 1, total, on_index) + index_html[inner_end:]
             sites.write_file(site, paths[index], swapped)
 
