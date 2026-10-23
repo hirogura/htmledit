@@ -1134,6 +1134,13 @@ textarea.input {
   max-width: 45%;
 }
 
+@keyframes memo-save-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.btn-memo-save.is-dirty {
+  animation: memo-save-blink 0.8s ease-in-out infinite;
+}
 .memo-text {
   flex: 1 1 auto;
   width: 100%;

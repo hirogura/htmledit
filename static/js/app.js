@@ -2777,22 +2777,44 @@
         el.memoText.value = payload.content || "";
         el.memoPath.textContent = payload.path;
         el.memoStatus.textContent = payload.exists ? "読み込みました" : "新規メモです";
+        markMemoClean();
       })
       .catch(function (error) {
         el.memoStatus.textContent = "メモの読み込みに失敗しました: " + error.message;
       });
   }
 
-  function saveMemo() {
+  var memoSaveTimer = null;
+  function markMemoDirty() {
+    el.btnMemoSave.classList.add("is-dirty");
+    if (memoSaveTimer) clearTimeout(memoSaveTimer);
+    memoSaveTimer = setTimeout(function () {
+      saveMemo(true);
+    }, 5000);
+  }
+  function markMemoClean() {
+    el.btnMemoSave.classList.remove("is-dirty");
+    if (memoSaveTimer) {
+      clearTimeout(memoSaveTimer);
+      memoSaveTimer = null;
+    }
+  }
+
+  function saveMemo(auto) {
+    if (memoSaveTimer && !auto) {
+      clearTimeout(memoSaveTimer);
+      memoSaveTimer = null;
+    }
     busy(el.btnMemoSave, true);
     api("/api/memo", { method: "PUT", body: { content: el.memoText.value } })
       .then(function (payload) {
         el.memoStatus.textContent = "保存しました: " + payload.path;
-        toast("メモを保存しました: " + payload.path, "success");
+        if (!auto) toast("メモを保存しました: " + payload.path, "success");
+        markMemoClean();
       })
       .catch(function (error) {
         el.memoStatus.textContent = "保存に失敗しました: " + error.message;
-        toast("メモの保存に失敗しました: " + error.message, "error");
+        if (!auto) toast("メモの保存に失敗しました: " + error.message, "error");
       })
       .finally(function () {
         busy(el.btnMemoSave, false);
@@ -3032,6 +3054,7 @@
       // 閉じるボタンで opencode も終了させる
       closeTerminal();
     });
+    el.memoText.addEventListener("input", markMemoDirty);
     el.memoText.addEventListener("keydown", function (event) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
