@@ -171,9 +171,14 @@ body {
 .workspace > .pane {
   flex: 0 0 auto;
   width: var(--pane-w, auto);
-  resize: horizontal;
-  overflow: auto;
 }
+.resizer {
+  flex: 0 0 4px;
+  width: 4px;
+  cursor: col-resize;
+  background: var(--border);
+}
+.resizer:hover { background: var(--accent); }
 
 .workspace > .post-pane {
   --pane-w: var(--post-w);

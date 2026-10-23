@@ -2969,6 +2969,34 @@
   /* ------------------------------------------------------------------ */
   var editor = null;
 
+  function setupResizers() {
+    var workspace = el.workspace;
+    if (!workspace) return;
+    var panes = Array.prototype.slice.call(workspace.querySelectorAll(":scope > .pane"));
+    panes.forEach(function (pane, index) {
+      if (index === panes.length - 1) return;
+      var resizer = document.createElement("div");
+      resizer.className = "resizer";
+      pane.parentNode.insertBefore(resizer, pane.nextSibling);
+      var dragging = false;
+      var startX = 0;
+      var startW = 0;
+      resizer.addEventListener("mousedown", function (e) {
+        dragging = true;
+        startX = e.clientX;
+        startW = pane.getBoundingClientRect().width;
+        e.preventDefault();
+      });
+      document.addEventListener("mousemove", function (e) {
+        if (!dragging) return;
+        var newW = Math.max(120, startW + (e.clientX - startX));
+        pane.style.width = newW + "px";
+      });
+      document.addEventListener("mouseup", function () {
+        dragging = false;
+      });
+    });
+  }
   function bindEvents() {
     el.btnAddSite.addEventListener("click", openSiteDialog);
     el.btnSiteSubmit.addEventListener("click", submitSiteDialog);
@@ -3229,6 +3257,7 @@
       toast("ターミナルを初期化できませんでした: " + error.message, "error");
     }
 
+    setupResizers();
     bindEvents();
     loadVersion();
     loadSites();
