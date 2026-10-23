@@ -3098,6 +3098,7 @@
       canvas.addEventListener("touchmove", move, { passive: false });
       canvas.addEventListener("touchend", end);
       el.btnHandwritingOpen.addEventListener("click", function () {
+        state.handwritingTarget = "post";
         el.handwritingPane.classList.remove("is-hidden");
       });
       el.btnHandwritingClose.addEventListener("click", function () {
@@ -3109,6 +3110,16 @@
       el.btnHandwritingSave.addEventListener("click", function () {
         canvas.toBlob(function (blob) {
           if (!blob) { toast("保存に失敗しました", "error"); return; }
+          if (state.handwritingTarget === "editor") {
+            var reader = new FileReader();
+            reader.onload = function () {
+              editor.insertImage(reader.result, "handwriting.png");
+              el.handwritingPane.classList.add("is-hidden");
+              toast("手書き画像を挿入しました", "success");
+            };
+            reader.readAsDataURL(blob);
+            return;
+          }
           var file = new File([blob], "handwriting.png", { type: "image/png" });
           state.postPhotos = (state.postPhotos || []).concat([file]);
           renderPostPhotoList();
@@ -3295,6 +3306,7 @@
         insertImageFromLibrary();
       },
       onHandwriting: function () {
+        state.handwritingTarget = "editor";
         el.handwritingPane.classList.remove("is-hidden");
       }
     });
