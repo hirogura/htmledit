@@ -516,11 +516,21 @@
       }
       var files = transfer.files;
       if (files && files.length) {
-        var file = files[0];
-        if (file.type && file.type.indexOf("image/") === 0) {
-          self._readImageFile(file);
-        } else if (self.onDropUnsupported) {
-          self.onDropUnsupported("画像ファイルのみドロップできます: " + file.name);
+        var imageFiles = [];
+        var nonImage = null;
+        for (var fi = 0; fi < files.length; fi++) {
+          if (files[fi].type && files[fi].type.indexOf("image/") === 0) {
+            imageFiles.push(files[fi]);
+          } else if (!nonImage) {
+            nonImage = files[fi];
+          }
+        }
+        if (imageFiles.length) {
+          imageFiles.forEach(function (file) {
+            self._readImageFile(file);
+          });
+        } else if (nonImage && self.onDropUnsupported) {
+          self.onDropUnsupported("画像ファイルのみドロップできます: " + nonImage.name);
         }
         return;
       }
@@ -547,6 +557,7 @@
     var reader = new FileReader();
     reader.onload = function () {
       self.insertImage(reader.result, file.name);
+      self.insertHtmlAtCaret("<br>");
     };
     reader.onerror = function () {
       if (self.onDropUnsupported) {

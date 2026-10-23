@@ -2747,6 +2747,7 @@
         })
         .then(function (payload) {
           editor.insertImage(payload.reference, file.name);
+           editor.insertHtmlAtCaret("<br>");
           toast("画像を保存しました: " + payload.path, "success");
           if (payload.ignored) {
             toast("警告: " + payload.path + " は .gitignore によりコミットされません。", "warn");
