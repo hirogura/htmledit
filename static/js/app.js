@@ -968,19 +968,14 @@
   var POST_DEFAULT_MAX_SIDE = 1024;
   var RESIZABLE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
-  function openPostDialog() {
-    if (!state.siteId) {
-      toast("先にサイトを追加してください。", "warn");
-      return;
+  function openPostPane() {
+    if (state.siteId) {
+      el.postError.hidden = true;
+    } else {
+      el.postError.textContent = "先にサイトを追加してください。";
+      el.postError.hidden = false;
     }
-    el.postTitle.value = "";
-    el.postBody.value = "";
-    el.postPhotos.value = "";
-    state.postPhotos = [];
-    el.postMaxSide.value = String(POST_DEFAULT_MAX_SIDE);
-    el.postError.hidden = true;
-    renderPostPhotoList();
-    el.postDialog.showModal();
+    togglePane("post", true);
     el.postTitle.focus();
   }
 
@@ -1153,6 +1148,11 @@
   }
 
   function submitPostDialog() {
+    if (!state.siteId) {
+      el.postError.textContent = "先にサイトを追加してください。";
+      el.postError.hidden = false;
+      return;
+    }
     var title = el.postTitle.value.trim();
     var body = el.postBody.value;
     var maxSide = parseInt(el.postMaxSide.value, 10);
@@ -1212,8 +1212,15 @@
         });
       })
       .then(function () {
-        el.postDialog.close();
+        /* 入力内容をクリアしてから投稿パネルを閉じる */
+        el.postTitle.value = "";
+        el.postBody.value = "";
+        state.postPhotos = [];
+        renderPostPhotoList();
+        el.postError.hidden = true;
+        el.postMaxSide.value = String(POST_DEFAULT_MAX_SIDE);
         toast("投稿しました: " + POST_PAGE, "success");
+        togglePane("post", false);
         refreshTree();
         refreshGit();
         if (state.path === POST_PAGE) {
@@ -2171,6 +2178,7 @@
   /* パネルの表示 / 非表示の切り替え                                      */
   /* ------------------------------------------------------------------ */
   var PANELS = {
+    post: { pane: "postPane", button: "btnPost", label: "投稿パネル" },
     site: { pane: "sidebarPane", button: "btnToggleSite", label: "サイトパネル" },
     prop: { pane: "propPane", button: "btnToggleProp", label: "プロパティパネル" },
     git: { pane: "gitPane", button: "btnToggleGit", label: "GitHub パネル" },
@@ -2259,10 +2267,16 @@
     el.btnOpencode.addEventListener("click", openOpencode);
     el.btnMemoSave.addEventListener("click", saveMemo);
     el.btnFoldTree.addEventListener("click", foldTree);
-    el.btnPost.addEventListener("click", openPostDialog);
+    el.btnPost.addEventListener("click", function () {
+      if (el.postPane.classList.contains("is-hidden")) {
+        openPostPane();
+      } else {
+        togglePane("post", false);
+      }
+    });
     el.btnPostSubmit.addEventListener("click", submitPostDialog);
-    el.btnPostCancel.addEventListener("click", function () {
-      el.postDialog.close();
+    el.btnPostClose.addEventListener("click", function () {
+      togglePane("post", false);
     });
     el.postPhotos.addEventListener("change", function () {
       var files = Array.prototype.slice.call(el.postPhotos.files || []);
@@ -2384,7 +2398,8 @@
     el.btnFoldTree = $("btn-fold-tree");
     el.btnTerminalClose = $("btn-terminal-close");
     el.btnPost = $("btn-post");
-    el.postDialog = $("post-dialog");
+    el.postPane = $("post-pane");
+    el.btnPostClose = $("btn-post-close");
     el.postForm = $("post-form");
     el.postTitle = $("post-title");
     el.postBody = $("post-body");
@@ -2393,7 +2408,6 @@
     el.postMaxSide = $("post-max-side");
     el.postError = $("post-error");
     el.btnPostSubmit = $("btn-post-submit");
-    el.btnPostCancel = $("btn-post-cancel");
 
     editor = window.htmleditEditor.create({
       host: $("wysiwyg-host"),

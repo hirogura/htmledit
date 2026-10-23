@@ -13,11 +13,11 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.1.2.0</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.1.3.0</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
-        <button type="button" class="btn" id="btn-post" title="public/index.html へ記事を投稿する">投稿</button>
+        <button type="button" class="btn btn-toggle" id="btn-post" title="投稿パネルの表示 / 非表示を切り替える">投稿</button>
         <button type="button" class="btn btn-toggle is-active" id="btn-toggle-site" title="サイトパネルの表示 / 非表示を切り替える">サイト</button>
         <button type="button" class="btn" id="btn-opencode" title="opencode (AI) を使ったターミナルを開く">opencode</button>
         <button type="button" class="btn btn-toggle is-active" id="btn-toggle-prop" title="プロパティパネルの表示 / 非表示を切り替える">プロパティ</button>
@@ -29,6 +29,39 @@
     </header>
 
     <main class="workspace" id="workspace">
+      <aside class="pane post-pane is-hidden" id="post-pane">
+        <div class="pane-head">
+          <h2 class="pane-title">投稿</h2>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-post-close" title="閉じる">×</button>
+        </div>
+        <form id="post-form" class="post-scroll">
+          <p class="field-hint">public/index.html の &lt;main class="container"&gt; 内 (&lt;section class="hero"&gt; の直後) に挿入します。</p>
+          <label class="field">
+            <span class="field-label">タイトル</span>
+            <input class="input" type="text" id="post-title" required />
+          </label>
+          <label class="field">
+            <span class="field-label">本文</span>
+            <textarea class="input" id="post-body" rows="6" spellcheck="false" placeholder="改行はそのまま &lt;br&gt; になります"></textarea>
+          </label>
+          <label class="field">
+            <span class="field-label">写真添付 (複数選択可)</span>
+            <input class="input" type="file" id="post-photos" accept="image/*" multiple />
+            <div class="post-photo-list" id="post-photo-list"></div>
+          </label>
+          <fieldset class="fieldset">
+            <legend class="field-label">オプション</legend>
+            <label class="field">
+              <span class="field-label">画像の長辺最大幅 (px)</span>
+              <input class="input" type="number" id="post-max-side" min="64" max="8192" step="1" value="1024" />
+              <p class="field-hint">この幅を超える画像は自動でリサイズして保存します。</p>
+            </label>
+          </fieldset>
+          <p class="dialog-error" id="post-error" hidden></p>
+          <button type="button" class="btn btn-primary btn-block" id="btn-post-submit">投稿</button>
+        </form>
+      </aside>
+
       <aside class="pane sidebar" id="sidebar-pane">
         <div class="pane-head">
           <h2 class="pane-title">サイト</h2>
@@ -184,39 +217,6 @@
         <div class="dialog-actions">
           <button type="button" class="btn" id="btn-site-cancel">キャンセル</button>
           <button type="button" class="btn btn-primary" id="btn-site-submit">追加する</button>
-        </div>
-      </form>
-    </dialog>
-
-    <dialog class="dialog" id="post-dialog">
-      <form method="dialog" class="dialog-form" id="post-form">
-        <h2 class="dialog-title">記事を投稿</h2>
-        <p class="field-hint">public/index.html の &lt;main class="container"&gt; 内 (&lt;section class="hero"&gt; の直後) に挿入します。</p>
-        <label class="field">
-          <span class="field-label">タイトル</span>
-          <input class="input" type="text" id="post-title" required />
-        </label>
-        <label class="field">
-          <span class="field-label">本文</span>
-          <textarea class="input" id="post-body" rows="6" spellcheck="false" placeholder="改行はそのまま &lt;br&gt; になります"></textarea>
-        </label>
-        <label class="field">
-          <span class="field-label">写真添付 (複数選択可)</span>
-          <input class="input" type="file" id="post-photos" accept="image/*" multiple />
-          <div class="post-photo-list" id="post-photo-list"></div>
-        </label>
-        <fieldset class="fieldset">
-          <legend class="field-label">オプション</legend>
-          <label class="field">
-            <span class="field-label">画像の長辺最大幅 (px)</span>
-            <input class="input" type="number" id="post-max-side" min="64" max="8192" step="1" value="1024" />
-            <p class="field-hint">この幅を超える画像は自動でリサイズして保存します。</p>
-          </label>
-        </fieldset>
-        <p class="dialog-error" id="post-error" hidden></p>
-        <div class="dialog-actions">
-          <button type="button" class="btn" id="btn-post-cancel">キャンセル</button>
-          <button type="button" class="btn btn-primary" id="btn-post-submit">投稿</button>
         </div>
       </form>
     </dialog>
