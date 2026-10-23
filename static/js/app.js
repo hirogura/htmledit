@@ -296,7 +296,9 @@
       setBaseHref(siteId);
     }
     renderSites();
-    refreshTree();
+    refreshTree().then(function () {
+      openFile("public/index.html");
+    });
     refreshGit();
     if (terminalPanel && el.terminalPane && !el.terminalPane.classList.contains("is-hidden")) {
       terminalPanel.connect(siteId, "opencode");
