@@ -1346,6 +1346,339 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* サイト設定 (index.html の head と上部メニューの初期設定)              */
+  /* ------------------------------------------------------------------ */
+  var TOPBAR_CLASS = "site-topbar";
+
+  function topbarHeaderPattern() {
+    return new RegExp(
+      '<header\\b[^>]*class=["\'][^"\']*' + TOPBAR_CLASS + '[^"\']*["\'][^>]*>[\\s\\S]*?</header\\s*>',
+      "i"
+    );
+  }
+
+  /* 「ラベル | URL」を 1 行ずつ解釈してメニューデータにする */
+  function parseMenuItems(text) {
+    var items = [];
+    (text || "")
+      .replace(/\r\n?/g, "\n")
+      .split("\n")
+      .forEach(function (line) {
+        var value = line.trim();
+        if (!value) {
+          return;
+        }
+        var pieces = value.split("|");
+        var label = (pieces[0] || "").trim();
+        var href = (pieces[1] || "").trim() || "#";
+        if (!label) {
+          return;
+        }
+        items.push({ label: label, href: href });
+      });
+    return items;
+  }
+
+  function buildTopbarHtml(items) {
+    if (!items.length) {
+      return "";
+    }
+    var links = items
+      .map(function (item) {
+        return '      <a href="' + escapeHtml(item.href) + '">' + escapeHtml(item.label) + "</a>";
+      })
+      .join("\n");
+    return (
+      '<header class="' + TOPBAR_CLASS + '">\n' +
+      '    <nav aria-label="メインメニュー">\n' +
+      links +
+      "\n    </nav>\n  </header>"
+    );
+  }
+
+  /* サンプル HTML を生成する (投稿用の container / hero 構成を含む) */
+  function buildSampleHtml(settings) {
+    var title = settings.title || "サイト";
+    var menuHtml = buildTopbarHtml(settings.items);
+    var iconLink = settings.icon
+      ? '\n    <link rel="icon" href="' + escapeHtml(settings.icon) + '" />'
+      : "";
+    var css = [
+      "    * { box-sizing: border-box; }",
+      "    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; color: #2b3138; background: #fff; line-height: 1.7; }",
+      "",
+      "    .site-topbar {",
+      "      position: sticky;",
+      "      top: 0;",
+      "      z-index: 10;",
+      "      display: flex;",
+      "      align-items: center;",
+      "      padding: 10px 20px;",
+      "      background: #fff;",
+      "      border-bottom: 1px solid #e2e6ea;",
+      "    }",
+      '    .site-topbar nav { display: flex; flex-wrap: wrap; gap: 18px; }',
+      '    .site-topbar a { color: #37414c; text-decoration: none; font-size: 14px; }',
+      '    .site-topbar a:hover { color: #2563eb; }',
+      "",
+      "    .container { max-width: 760px; margin: 0 auto; padding: 8px 20px 48px; }",
+      "    .hero { padding: 40px 0 8px; border-bottom: 1px solid #eef1f4; margin-bottom: 24px; }",
+      "    .hero h1 { margin: 0 0 8px; font-size: 28px; font-weight: 700; }",
+      "    .hero p { margin: 0; color: #69737e; font-size: 14px; }",
+      "    h2 { margin: 24px 0 8px; font-size: 20px; }",
+      "    img { max-width: 100%; height: auto; border-radius: 8px; }",
+      "    hr { border: none; border-top: 1px solid #e2e6ea; margin: 24px 0; }",
+      "",
+      '    .site-footer { border-top: 1px solid #e2e6ea; color: #8a929c; font-size: 12.5px; text-align: center; padding: 16px 0 28px; }'
+    ].join("\n");
+
+    var lines = [
+      "<!doctype html>",
+      '<html lang="ja">',
+      "<head>",
+      '    <meta charset="utf-8" />',
+      '    <meta name="viewport" content="width=device-width, initial-scale=1" />',
+      "    <title>" + escapeHtml(title) + "</title>" + iconLink,
+      "    <style>",
+      css,
+      "    </style>",
+      "</head>",
+      "<body>"
+    ];
+    if (menuHtml) {
+      lines.push("  " + menuHtml);
+    }
+    lines.push(
+      "",
+      '  <main class="container">',
+      '    <section class="hero">',
+      "      <h1>" + escapeHtml(title) + "</h1>",
+      "      <p>ここにサイトの説明を書きます。</p>",
+      "    </section>",
+      "",
+      "  </main>",
+      "",
+      '  <footer class="site-footer">&copy; ' + new Date().getFullYear() + ' ' + escapeHtml(title) + "</footer>",
+      "</body>",
+      "</html>",
+      ""
+    );
+    return lines.join("\n");
+  }
+
+  /* 既存 html にタイトル / アイコン / 上部メニューを反映して返す */
+  function applyHeadSettings(html, settings) {
+    var output = html;
+
+    if (settings.title) {
+      var safeTitle = escapeHtml(settings.title);
+      var titleRe = /<title[^>]*>[\s\S]*?<\/title\s*>/i;
+      if (titleRe.test(output)) {
+        output = output.replace(titleRe, "<title>" + safeTitle + "</title>");
+      } else if (/<head\b[^>]*>/i.test(output)) {
+        output = output.replace(/<head\b[^>]*>/i, "$&\n    <title>" + safeTitle + "</title>");
+      }
+    }
+
+    if (settings.icon) {
+      var iconLink = '<link rel="icon" href="' + escapeHtml(settings.icon) + '" />';
+      var iconRe = /<link\b[^>]*rel=["']?[^>]*icon["']?[^>]*>/i;
+      if (iconRe.test(output)) {
+        output = output.replace(iconRe, iconLink);
+      } else if (/<\/title\s*>/i.test(output)) {
+        output = output.replace(/<\/title\s*>/i, "$&\n    " + iconLink);
+      } else if (/<head\b[^>]*>/i.test(output)) {
+        output = output.replace(/<head\b[^>]*>/i, "$&\n    " + iconLink);
+      }
+    }
+
+    /* 既存の上部メニューを置き換える (メニューなしになったら削除) */
+    output = output.replace(topbarHeaderPattern(), "");
+    var menuHtml = buildTopbarHtml(settings.items);
+    if (menuHtml) {
+      output = output.replace(/<body\b[^>]*>/i, function (bodyTag) {
+        return bodyTag + "\n  " + menuHtml;
+      });
+    }
+    return output;
+  }
+
+  /* 上部メニューのリンクを「ラベル | URL」形式に戻してフィールドに詰める */
+  function readTopbarItemsFromHtml(html) {
+    var match = topbarHeaderPattern().exec(html);
+    if (!match) {
+      return "";
+    }
+    var lines = [];
+    var anchorRe = /<a\b[^>]*href=["']?([^"'>\s]+)["']?[^>]*>([\s\S]*?)<\/a\s*>/gi;
+    var anchor;
+    while ((anchor = anchorRe.exec(match[0]))) {
+      lines.push(anchor[2].trim() + " | " + anchor[1]);
+    }
+    return lines.join("\n");
+  }
+
+  function openSiteSettings() {
+    if (!state.siteId) {
+      toast("先にサイトを追加してください。", "warn");
+      return;
+    }
+    var site = currentSite();
+    el.settingsDialogTitle.textContent = "サイト設定 - " + (site ? site.name : "");
+    el.settingsTitle.value = "";
+    el.settingsIcon.value = "";
+    el.settingsMenu.value = "";
+    el.settingsError.hidden = true;
+    el.settingsDialog.showModal();
+    /* 既存の index.html から現在の設定値を取り込む */
+    api("/api/sites/" + encodeURIComponent(state.siteId) + "/file?path=" + encodeURIComponent(POST_PAGE))
+      .then(function (payload) {
+        if (el.settingsDialog.open !== true) {
+          return;
+        }
+        var html = payload.content || "";
+        var titleMatch = /<title[^>]*>([\s\S]*?)<\/title\s*>/i.exec(html);
+        if (titleMatch) {
+          el.settingsTitle.value = titleMatch[1].trim();
+        }
+        var iconTag = /<link\b[^>]*rel=["']?[^>]*icon["']?[^>]*>/i.exec(html);
+        if (iconTag) {
+          var hrefMatch = /href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(iconTag[0]);
+          if (hrefMatch) {
+            el.settingsIcon.value = hrefMatch[1] || hrefMatch[2] || hrefMatch[3] || "";
+          }
+        }
+        var menuText = readTopbarItemsFromHtml(html);
+        if (menuText) {
+          el.settingsMenu.value = menuText;
+        }
+      })
+      .catch(function () {
+        /* index.html が無い場合は空欄のまま */
+      });
+  }
+
+  function flushEditorForPostPage() {
+    if (state.path !== POST_PAGE) {
+      return false;
+    }
+    openFile(POST_PAGE);
+    return true;
+  }
+
+  function submitSiteSettings(action) {
+    var siteId = state.siteId;
+    if (!siteId) {
+      el.settingsError.textContent = "先にサイトを追加してください。";
+      el.settingsError.hidden = false;
+      return;
+    }
+    var settings = {
+      title: el.settingsTitle.value.trim(),
+      icon: el.settingsIcon.value.trim(),
+      items: parseMenuItems(el.settingsMenu.value)
+    };
+
+    var buttons = [el.btnSettingsCreate, el.btnSettingsApply];
+    buttons.forEach(function (button) {
+      busy(button, true);
+      button.disabled = true;
+    });
+
+    var chain;
+    if (action === "create") {
+      /* 既存の index.html を index-bk.html (重複時は連番) へ退避してから作成 */
+      var backup = null;
+      chain = api(
+        "/api/sites/" + encodeURIComponent(siteId) + "/file?path=" + encodeURIComponent(POST_PAGE)
+      )
+        .then(function () {
+          var attempt = function (index) {
+            var name = index === 0 ? "index-bk.html" : "index-bk-" + index + ".html";
+            return api("/api/sites/" + encodeURIComponent(siteId) + "/rename", {
+              method: "POST",
+              body: { from: POST_PAGE, to: name }
+            })
+              .then(function () {
+                backup = name;
+              })
+              .catch(function (error) {
+                if (index >= 50) {
+                  throw error;
+                }
+                return attempt(index + 1);
+              });
+          };
+          return attempt(0);
+        })
+        .catch(function (error) {
+          /* index.html が無い場合のみ退避を省略する */
+          if (error.status === 404) {
+            return null;
+          }
+          throw error;
+        })
+        .then(function () {
+          return api("/api/sites/" + encodeURIComponent(siteId) + "/file", {
+            method: "PUT",
+            body: { path: POST_PAGE, content: buildSampleHtml(settings) }
+          }).then(function () {
+            return backup;
+          });
+        })
+        .then(function (backupName) {
+          el.settingsDialog.close();
+          toast(
+            "index.html を作成しました: " + POST_PAGE +
+              (backupName ? "\n元のファイルは " + backupName + " に退避しました。" : ""),
+            "success"
+          );
+          flushEditorForPostPage();
+          refreshTree();
+          refreshGit();
+        });
+    } else {
+      chain = api(
+        "/api/sites/" + encodeURIComponent(siteId) + "/file?path=" + encodeURIComponent(POST_PAGE)
+      )
+        .then(function (payload) {
+          if (!payload.content) {
+            throw new Error(POST_PAGE + " が空です。");
+          }
+          return api("/api/sites/" + encodeURIComponent(siteId) + "/file", {
+            method: "PUT",
+            body: {
+              path: POST_PAGE,
+              content: applyHeadSettings(payload.content, settings)
+            }
+          });
+        })
+        .then(function () {
+          el.settingsDialog.close();
+          toast("設定を適用しました: " + POST_PAGE, "success");
+          flushEditorForPostPage();
+          refreshGit();
+        });
+    }
+
+    chain
+      .catch(function (error) {
+        var message =
+          error.status === 404
+            ? POST_PAGE + " が見つかりません。先に「index.html を作成」してください。"
+            : error.message;
+        el.settingsError.textContent = message;
+        el.settingsError.hidden = false;
+      })
+      .finally(function () {
+        buttons.forEach(function (button) {
+          busy(button, false);
+          button.disabled = false;
+        });
+      });
+  }
+
+  /* ------------------------------------------------------------------ */
   /* GitHub ペイン                                                       */
   /* ------------------------------------------------------------------ */
   function clearGitPane() {
@@ -2341,6 +2674,16 @@
       el.siteDialog.close();
     });
     el.btnRefreshTree.addEventListener("click", refreshTree);
+    el.btnSiteSettings.addEventListener("click", openSiteSettings);
+    el.btnSettingsApply.addEventListener("click", function () {
+      submitSiteSettings("apply");
+    });
+    el.btnSettingsCreate.addEventListener("click", function () {
+      submitSiteSettings("create");
+    });
+    el.btnSettingsClose.addEventListener("click", function () {
+      el.settingsDialog.close();
+    });
     el.btnRefreshGit.addEventListener("click", refreshGit);
     el.btnClearSelection.addEventListener("click", function () {
       var selection = window.getSelection();
@@ -2446,7 +2789,9 @@
       event.preventDefault();
       submitSiteDialog();
     });
-    el.postForm.addEventListener("submit", function (event) {
+    el.settingsForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+    });    el.postForm.addEventListener("submit", function (event) {
       event.preventDefault();
       submitPostDialog();
     });
@@ -2508,6 +2853,17 @@
     el.btnMemoClose = $("btn-memo-close");
     el.btnFoldTree = $("btn-fold-tree");
     el.btnTerminalClose = $("btn-terminal-close");
+    el.btnSiteSettings = $("btn-site-settings");
+    el.settingsDialog = $("settings-dialog");
+    el.settingsForm = $("settings-form");
+    el.settingsDialogTitle = $("settings-dialog-title");
+    el.settingsTitle = $("settings-title");
+    el.settingsIcon = $("settings-icon");
+    el.settingsMenu = $("settings-menu");
+    el.settingsError = $("settings-error");
+    el.btnSettingsCreate = $("btn-settings-create");
+    el.btnSettingsApply = $("btn-settings-apply");
+    el.btnSettingsClose = $("btn-settings-close");
     el.btnPost = $("btn-post");
     el.postPane = $("post-pane");
     el.btnPostClose = $("btn-post-close");

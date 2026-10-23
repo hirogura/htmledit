@@ -13,7 +13,7 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.1.6.0</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.1.8.0</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
@@ -87,6 +87,7 @@
           <div class="pane-head-actions">
             <button type="button" class="btn btn-ghost btn-sm" id="btn-fold-tree" title="展開中のフォルダをすべて折りたたむ">折畳</button>
             <button type="button" class="btn btn-ghost btn-sm" id="btn-refresh-tree" title="一覧を再読み込み">更新</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-site-settings" title="サイトの初期設定 (タイトル / アイコン / 上部メニュー / index.html 作成)">⚙</button>
           </div>
         </div>
         <div class="tree" id="file-tree"></div>
@@ -237,6 +238,34 @@
         <div class="dialog-actions">
           <button type="button" class="btn" id="btn-site-cancel">キャンセル</button>
           <button type="button" class="btn btn-primary" id="btn-site-submit">追加する</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="dialog" id="settings-dialog">
+      <form method="dialog" class="dialog-form" id="settings-form">
+        <h2 class="dialog-title" id="settings-dialog-title">サイト設定</h2>
+        <p class="field-hint">public/index.html の &lt;head&gt; と &lt;body&gt; 上部に反映します。</p>
+        <label class="field">
+          <span class="field-label">サイトタイトル</span>
+          <input class="input" type="text" id="settings-title" placeholder="サイト名" />
+        </label>
+        <label class="field">
+          <span class="field-label">
+            サイトアイコン (favicon, パス / URL)
+          </span>
+          <input class="input" type="text" id="settings-icon" placeholder="public/favicon.svg" />
+        </label>
+        <label class="field">
+          <span class="field-label">上部固定メニュー</span>
+          <textarea class="input" id="settings-menu" rows="5" spellcheck="false" placeholder="1 行につき 1 項目&#10;ホーム | /&#10;投稿 | /#new"></textarea>
+          <p class="field-hint">「ラベル | リンク先」の形式で 1 行に 1 項目ずつ書くと、&lt;body&gt; の最初に固定表示のメニュー (position: sticky) が入ります。</p>
+        </label>
+        <p class="dialog-error" id="settings-error" hidden></p>
+        <div class="dialog-actions">
+          <button type="button" class="btn" id="btn-settings-close">閉じる</button>
+          <button type="button" class="btn" id="btn-settings-apply" title="既存の public/index.html に設定を反映する">設定を適用</button>
+          <button type="button" class="btn btn-primary" id="btn-settings-create" title="サンプル HTML で public/index.html を作り直す (既存ファイルは index-bk.html に退避)">index.html を作成</button>
         </div>
       </form>
     </dialog>
