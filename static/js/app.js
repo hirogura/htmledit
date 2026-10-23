@@ -1799,7 +1799,8 @@
     el.settingsDialogTitle.textContent = "サイト設定 - " + (site ? site.name : "");
     el.settingsTitle.value = "";
     el.settingsDesc.value = "";
-    el.settingsIcon.value = "";
+    /* favicon は最初から「favicon.svg」を記入しておく (ファイルが無ければ自動生成される) */
+    el.settingsIcon.value = "favicon.svg";
     el.settingsHeaderWidth.value = "";
     el.settingsBodyWidth.value = "";
     state.settingsMenuRows = [];
@@ -1820,8 +1821,9 @@
         var iconTag = iconLinkPattern().exec(html);
         if (iconTag) {
           var hrefMatch = /href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(iconTag[0]);
-          if (hrefMatch) {
-            el.settingsIcon.value = hrefMatch[1] || hrefMatch[2] || hrefMatch[3] || "";
+          var iconHref = hrefMatch ? hrefMatch[1] || hrefMatch[2] || hrefMatch[3] || "" : "";
+          if (iconHref) {
+            el.settingsIcon.value = iconHref;
           }
         }
         var rows = rowsFromTopbar(html);
