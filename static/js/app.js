@@ -2326,10 +2326,24 @@
   function buildLinkSection(link) {
     var section = propSection("ハイパーリンク");
     var href = link.getAttribute("href") || "";
+    var hashIndex = href.indexOf("#");
+    var linkBase = hashIndex >= 0 ? href.substring(0, hashIndex) : href;
+    var linkAnchor = hashIndex >= 0 ? href.substring(hashIndex + 1) : "";
 
     section.appendChild(
       propRow("リンク先 URL", propInput(href, function (value) {
         link.setAttribute("href", value);
+        editor.notifyChange();
+      }))
+    );
+    section.appendChild(
+      propRow("アンカー (#id)", propInput(linkAnchor, function (value) {
+        var anchor = value.replace(/^#/, "");
+        if (anchor) {
+          link.setAttribute("href", linkBase + "#" + anchor);
+        } else {
+          link.setAttribute("href", linkBase);
+        }
         editor.notifyChange();
       }))
     );
