@@ -702,8 +702,15 @@ class ApiTestCase(unittest.TestCase):
         self.assertEqual(payload["pages"], 2)
         self.assertEqual(payload["paths"], ["public/index.html", "public/page/2.html"])
 
-        # 個別ページにはタイトル / 本文 / 戻るリンクが含まれる
-        post_page = (repo / "public/posts/20261023-000021.html").read_text("utf-8")
+        # 個別ページは posts/YYYY/MM/DD/ に階層化される
+        self.assertEqual(payload["post"], "public/posts/2026/10/23/20261023-000021.html")
+        post_page = (repo / "public/posts/2026/10/23/20261023-000021.html").read_text("utf-8")
+        self.assertIn('data-post-id="20261023-000021"', post_page)
+        self.assertIn("<h1>記事 21</h1>", post_page)
+        self.assertIn("これは記事21の4行目", post_page)
+        self.assertIn("一覧ページへ戻る", post_page)
+        # 深い階層から index.html への戻りリンク
+        self.assertIn('href="../../../../index.html"', post_page)
         self.assertIn('data-post-id="20261023-000021"', post_page)
         self.assertIn("<h1>記事 21</h1>", post_page)
         self.assertIn("これは記事21の4行目", post_page)
@@ -713,7 +720,7 @@ class ApiTestCase(unittest.TestCase):
         index = (repo / "public/index.html").read_text("utf-8")
         self.assertEqual(index.count("data-post-id"), 20)
         self.assertIn(
-            '<h2><a href="posts/20261023-000021.html" style="color: inherit; text-decoration: none;">記事 21</a></h2>',
+            '<h2><a href="posts/2026/10/23/20261023-000021.html" style="color: inherit; text-decoration: none;">記事 21</a></h2>',
             index,
         )
         # 「続きを読む」は角丸のバッジ風リンク
@@ -735,7 +742,7 @@ class ApiTestCase(unittest.TestCase):
         # 2 ページ目に残りの投稿と「前へ」
         page2 = (repo / "public/page/2.html").read_text("utf-8")
         self.assertEqual(page2.count("data-post-id"), 1)
-        self.assertIn("../posts/20261023-000001.html", page2)
+        self.assertIn("../posts/2026/10/23/20261023-000001.html", page2)
         self.assertIn("前へ", page2)
         self.assertIn("../index.html", page2)
         # 画像の無い投稿 (記事 1) にはサムネイルが付かない
@@ -748,7 +755,7 @@ class ApiTestCase(unittest.TestCase):
         status, payload = self.request(
             "PUT",
             f"/api/sites/{site_id}/file",
-            {"path": "public/posts/20261023-000021.html", "content": edited},
+            {"path": "public/posts/2026/10/23/20261023-000021.html", "content": edited},
         )
         self.assertEqual(status, 200, payload)
         self.assertTrue(payload.get("sync", {}).get("ok"))
@@ -759,7 +766,7 @@ class ApiTestCase(unittest.TestCase):
 
         # 投稿の削除は一覧から消え、過去ログページも整理される
         status, payload = self.request(
-            "DELETE", f"/api/sites/{site_id}/file", {"path": "public/posts/20261023-000021.html"}
+            "DELETE", f"/api/sites/{site_id}/file", {"path": "public/posts/2026/10/23/20261023-000021.html"}
         )
         self.assertEqual(status, 200, payload)
         index = (repo / "public/index.html").read_text("utf-8")

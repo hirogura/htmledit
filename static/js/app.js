@@ -1083,7 +1083,7 @@
 
   /*
    * 投稿は「1記事=1ページ」で生成する:
-   * - 個別ページ: public/posts/ID.html (タイトル / 本文全文 / 写真) をサーバー側で作成
+   * - 個別ページ: public/posts/YYYY/MM/DD/ID.html (日付階層 / タイトル / 本文全文 / 写真) をサーバー側で作成
    * - 一覧ページ: index.html / page/*.html には「最初の 3 行 (100 文字程度) + 続きを読む」の
    *   スニペット article (data-post-id="ID") を最大 20 件ずつ配置 (サーバー側で再構築)
    */
@@ -1153,7 +1153,9 @@
     var siteId = state.siteId;
     var photos = (state.postPhotos || []).slice();
     var postId = postIdFromNow();
-    var postPath = "public/posts/" + postId + ".html";
+    /* 個別ページは日付で階層分けする: public/posts/YYYY/MM/DD/HHMMSS.html */
+    var postPath =
+      "public/posts/" + postId.slice(0, 4) + "/" + postId.slice(4, 6) + "/" + postId.slice(6, 8) + "/" + postId + ".html";
 
     if (state.path === POST_PAGE && editor && editor.dirty) {
       if (!confirm("未保存の変更があります。投稿した内容で public/index.html を上書きしますか？")) {
@@ -1173,7 +1175,7 @@
         return postResizeImage(file, maxSide)
           .then(function (image) {
             toast((index + 1) + " / " + photos.length + " 枚目をアップロード中…", "info");
-            /* 個別ページ (public/posts/ID.html) からの相対パスで参照する */
+            /* 個別ページ (public/posts/YYYY/MM/DD/ID.html) からの相対パスで参照する */
             return postUploadImage(siteId, image, postPath);
           })
           .then(function (reference) {

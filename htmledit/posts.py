@@ -1,6 +1,6 @@
 """1記事=1ページの個別記事と、一覧ページ (スニペット/ページネーション) の管理.
 
-- 個別ページ: public/posts/YYYYMMDD-HHMMSS.html (タイトル / 本文全文 / 写真 を含む)
+- 個別ページ: public/posts/YYYY/MM/DD/HHMMSS.html (タイトル / 本文全文 / 写真 を含む、日付で階層分け)
 - 一覧ページ: public/index.html と public/page/2.html 以降 (スニペット article を最大 20 件ずつ)
 - スニペットは data-post-id="YYYYMMDD-HHMMSS" で識別し、個別ページの保存・削除時に再構築する
 - 本文に画像がある場合は最初の1枚をサムネイルとして一覧に表示する
@@ -13,7 +13,7 @@ import logging
 import re
 import threading
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from . import sites
 from .sites import Site, SiteError
@@ -230,10 +230,12 @@ def _first_image_src(body_html: str) -> str:
 
 
 def _thumb_src(src: str, on_index: bool) -> str:
-    """個別ページ (posts/) 基準の画像パスを一覧ページの位置に合わせて補正する.
+    """個別ページ基準の画像パスを一覧ページの位置に合わせて補正する.
 
-    - index.html (public/): ../images/a.jpg → images/a.jpg
-    - page/N.html (public/page/): ../images/a.jpg のまま
+    個別ページの階層は posts/YYYY/MM/DD/*.html など深さが変わるため、
+    先頭の ../ を一旦すべて外して public/ 基準に正規化してから付け直す。
+    - index.html (public/): ../../images/a.jpg → images/a.jpg
+    - page/N.html (public/page/): ../../images/a.jpg → ../images/a.jpg
     外部 URL / パス解決不能なものは空文字でサムネイルを無効化する。
     """
     text = (src or "").strip()
@@ -243,9 +245,14 @@ def _thumb_src(src: str, on_index: bool) -> str:
         return text
     if text.startswith("/"):
         return ""  # サイトルート相対はサブディレクトリ配置で壊れ得るため諦める
-    if on_index:
-        return text[3:] if text.startswith("../") else "posts/" + text
-    return text if text.startswith("../") else "../posts/" + text
+    # ../ はすべて外す (無い場合も index 基準の参照とみなしてそのまま使う)
+    text = re.sub(r"^(\.\./)+", "", text)
+    return text if on_index else "../" + text
+
+
+def _post_page_relpath(post_id: str) -> str:
+    """個別ページの public/ からの相対パス (posts/YYYY/MM/DD/HHMMSS.html) を返す."""
+    return f"posts/{post_id[:4]}/{post_id[4:6]}/{post_id[6:8]}/{post_id}.html"
 
 
 # --------------------------------------------------------------------------
@@ -294,8 +301,11 @@ def _post_article(post_id: str, title: str, body_html: str, with_timestamp: bool
     return f"<article {attrs}>\n  " + "\n  ".join(inner) + "\n</article>"
 
 
-def _adjust_relative_hrefs(doc: str) -> str:
-    """個別ページ (posts/) 内の相対リンクを ../ 付きに補正する (index.html 基準 → posts/ 基準)."""
+def _adjust_relative_hrefs(doc: str, depth: int = 1) -> str:
+    """個別ページ (posts/YYYY/MM/DD/) 内の相対リンクを .. の連鎖付きに補正する.
+
+    depth = 個別ページの public/ 内でのディレクトリの深さ (posts/ID.html なら 1)
+    """
     pattern = re.compile(r'(<(?:a|link)\b[^>]*\bhref\s*=\s*)(["\'])([^"\']+?)\2', re.I)
 
     def replace(match) -> str:
@@ -309,7 +319,7 @@ def _adjust_relative_hrefs(doc: str) -> str:
             or re.match(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:", text)
         ):
             return match.group(0)
-        return match.group(1) + quote + "../" + value + quote
+        return match.group(1) + quote + "../" * depth + value + quote
 
     return pattern.sub(replace, doc)
 
@@ -340,7 +350,7 @@ def _replace_main_inner(doc: str, article_html: str) -> str:
     return doc
 
 
-def _render_post_document(index_html: str, article_html: str, page_title: str) -> str:
+def _render_post_document(index_html: str, article_html: str, page_title: str, depth: int = 1) -> str:
     if not index_html:
         return (
             "<!doctype html>\n"
@@ -365,7 +375,7 @@ def _render_post_document(index_html: str, article_html: str, page_title: str) -
             "</body>\n"
             "</html>\n"
         )
-    doc = _adjust_relative_hrefs(index_html)
+    doc = _adjust_relative_hrefs(index_html, depth)
     doc = _replace_title(doc, page_title)
     return _replace_main_inner(doc, article_html)
 
@@ -442,7 +452,7 @@ def _collect_posts(root: Path, index_html: str) -> list[dict]:
     posts: dict[str, dict] = {}
     posts_dir = root / "public" / "posts"
     if posts_dir.is_dir():
-        for path in sorted(posts_dir.glob("*.html")):
+        for path in sorted(posts_dir.rglob("*.html")):
             post_id = path.stem
             if not POST_ID_RE.match(post_id):
                 continue
@@ -465,6 +475,8 @@ def _collect_posts(root: Path, index_html: str) -> list[dict]:
                 "thumb": _first_image_src(body_html),
                 "timestamp": timestamp,
                 "divider": divider,
+                # 一覧からのリンクは個別ページの実在位置を使う (旧形式 posts/ID.html もそのまま)
+                "file": path.relative_to(root / "public").as_posix(),
                 "fallback_inner": None,
             }
 
@@ -488,6 +500,7 @@ def _collect_posts(root: Path, index_html: str) -> list[dict]:
                 "thumb": "",
                 "timestamp": timestamp,
                 "divider": divider,
+                "file": _post_page_relpath(block["id"]),
                 "fallback_inner": block["inner"] if not title else None,
             }
 
@@ -536,8 +549,8 @@ def rebalance(site: Site) -> dict:
         paths = [INDEX_PAGE] + [f"public/page/{n}.html" for n in range(2, total + 1)]
         for index, chunk in enumerate(chunks):
             on_index = index == 0
-            prefix = "posts/" if on_index else "../posts/"
-            rendered = [{"id": entry["id"], "inner": _snippet_for(entry, prefix + entry["id"] + ".html", on_index)} for entry in chunk]
+            # 一覧からのリンクは個別ページの実在位置 (posts/YYYY/MM/DD/*.html など) を使う
+            rendered = [{"id": entry["id"], "inner": _snippet_for(entry, entry["file"] if on_index else "../" + entry["file"], on_index)} for entry in chunk]
             swapped = index_html[:open_end] + _list_inner(unmanaged, rendered, index + 1, total, on_index) + index_html[inner_end:]
             sites.write_file(site, paths[index], swapped)
 
@@ -552,7 +565,7 @@ def rebalance(site: Site) -> dict:
 
 
 def publish(site: Site, post_id: str, title: str, body_html: str = "", with_timestamp: bool = True, with_divider: bool = True) -> dict:
-    """個別ページ (public/posts/ID.html) を作成し、一覧ページを再構築する."""
+    """個別ページ (public/posts/YYYY/MM/DD/ID.html) を作成し、一覧ページを再構築する."""
     with _LOCK:
         post_id = (post_id or "").strip()
         if not POST_ID_RE.match(post_id):
@@ -568,18 +581,21 @@ def publish(site: Site, post_id: str, title: str, body_html: str = "", with_time
             if match:
                 site_title = _plain_text(match.group(0))
         page_title = f"{title} - {site_title}" if site_title and site_title != title else title
-        article_html = _post_article(post_id, title, body_html, with_timestamp, with_divider, "../index.html")
-        doc = _render_post_document(index_html, article_html, page_title)
-        post_path = f"{POST_PAGE_PREFIX}/{post_id}.html"
+        rel_page = _post_page_relpath(post_id)
+        depth = len(PurePosixPath(rel_page).parent.parts)
+        article_html = _post_article(post_id, title, body_html, with_timestamp, with_divider, "../" * depth + "index.html")
+        doc = _render_post_document(index_html, article_html, page_title, depth)
+        post_path = f"public/{rel_page}"
         sites.write_file(site, post_path, doc)
         summary = rebalance(site)
         return {"ok": True, "post": post_path, **summary}
 
 
 def sync_saved_post(site: Site, relative: str) -> dict | None:
-    """public/posts/ID.html の保存を検知して一覧ページを再構築する."""
+    """public/posts/YYYY/MM/DD/ID.html の保存を検知して一覧ページを再構築する."""
     normalized = (relative or "").strip().lstrip("/")
-    if not re.match(rf"^{re.escape(POST_PAGE_PREFIX)}/[^/]+\.html$", normalized, re.I):
+    # posts/ 直下 (旧形式) と posts/YYYY/MM/DD/ 配下 (階層化) の両方に対応する
+    if not re.match(rf"^{re.escape(POST_PAGE_PREFIX)}/.+\.html$", normalized, re.I):
         return None
     post_id = Path(normalized).stem
     if not POST_ID_RE.match(post_id):
