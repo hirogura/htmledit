@@ -11,12 +11,47 @@
   var BODY_OPEN_RE = /<body\b[^>]*>/i;
   var BODY_CLOSE_RE = /<\/body\s*>/i;
 
+  /* フラットなアイコン (SVG, stroke は currentColor) */
+  function flatIcon(body, viewBox) {
+    return (
+      '<svg viewBox="' + (viewBox || "0 0 16 16") + '" width="15" height="15" aria-hidden="true">' +
+      body +
+      "</svg>"
+    );
+  }
+
+  function letterIcon(letter, line) {
+    var body =
+      '<text x="8" y="12" text-anchor="middle" font-size="13" font-weight="650" fill="currentColor">' +
+      letter +
+      "</text>";
+    if (line) {
+      body += '<path d="' + line + '" stroke="currentColor" stroke-width="1.4" fill="none"/>';
+    }
+    return flatIcon(body);
+  }
+
   var TOOLBAR_GROUPS = [
     [
-      { label: "B", title: "太字", command: "bold" },
-      { label: "I", title: "斜体", command: "italic" },
-      { label: "U", title: "下線", command: "underline" },
-      { label: "S", title: "取り消し線", command: "strikeThrough" }
+      { label: "B", title: "太字", command: "bold", icon: letterIcon("B") },
+      {
+        label: "I",
+        title: "斜体",
+        command: "italic",
+        icon: flatIcon(
+          '<path d="M10.5 3h4M1.5 13h4M9.8 3.4 6.2 12.6" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'
+        )
+      },
+      {
+        label: "U",
+        title: "下線",
+        command: "underline",
+        icon: flatIcon(
+          '<path d="M4 2v5.5a4 4 0 0 0 8 0V2" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
+            '<path d="M2.5 14h11" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'
+        )
+      },
+      { label: "S", title: "取り消し線", command: "strikeThrough", icon: letterIcon("S", "M2.5 7.5h11") }
     ],
     [
       { type: "select", title: "段落スタイル", options: [
@@ -33,14 +68,77 @@
       { label: "1.", title: "番号付きリスト", command: "insertOrderedList" }
     ],
     [
-      { label: "≡", title: "左寄せ", command: "justifyLeft" },
-      { label: "≡", title: "中央寄せ", command: "justifyCenter" },
-      { label: "≡", title: "右寄せ", command: "justifyRight" }
+      {
+        label: "≪",
+        title: "左寄せ",
+        command: "justifyLeft",
+        icon: flatIcon(
+          '<path d="M1.5 3.5h13M1.5 8h13M1.5 12.5h8" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'
+        )
+      },
+      {
+        label: "≡",
+        title: "中央寄せ",
+        command: "justifyCenter",
+        icon: flatIcon(
+          '<path d="M1.5 3.5h13M1.5 8h13M4 12.5h8" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'
+        )
+      },
+      {
+        label: "≫",
+        title: "右寄せ",
+        command: "justifyRight",
+        icon: flatIcon(
+          '<path d="M1.5 3.5h13M1.5 8h13M6.5 12.5h8" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'
+        )
+      }
     ],
     [
-      { label: "🔗", title: "リンク", command: "createLink" },
-      { label: "🖼", title: "画像", command: "insertImage" },
-      { label: "⌫", title: "書式を消去", command: "removeFormat" }
+      {
+        label: "🔗",
+        title: "リンク",
+        command: "createLink",
+        icon: flatIcon(
+          '<path d="M6.5 9.5 9.5 6.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>' +
+            '<path d="M7 4.5 9 2.5a3 3 0 0 1 4.5 4.5l-2 2a3 3 0 0 1-1 .68" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>' +
+            '<path d="M9 11.5 7 13.5a3 3 0 0 1-4.5-4.5l2-2a3 3 0 0 1 1-.68" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'
+        )
+      },
+      {
+        label: "🖼",
+        title: "画像",
+        command: "insertImage",
+        icon: flatIcon(
+          '<rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" stroke-width="1.6" fill="none"/>' +
+            '<circle cx="5.5" cy="6" r="1.4" stroke="currentColor" stroke-width="1.4" fill="none"/>' +
+            '<path d="M2.5 12.5l3.5-3.5 2.5 2.5 3-3 2 2" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
+        )
+      },
+      {
+        label: "⌫",
+        title: "書式を消去",
+        command: "removeFormat",
+        icon: letterIcon("T", "M2.5 13.5 13.5 2.5")
+      },
+      {
+        label: "📅",
+        title: "現在の日付を挿入",
+        command: "insertDate",
+        icon: flatIcon(
+          '<rect x="1.5" y="3" width="13" height="11.5" rx="1.5" stroke="currentColor" stroke-width="1.6" fill="none"/>' +
+            '<path d="M1.5 6.5h13M5 1.5v3M11 1.5v3" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'
+        )
+      },
+      {
+        label: "─",
+        title: "区切り線を挿入",
+        command: "insertHorizontalRule",
+        icon: flatIcon(
+          '<path d="M2 4.5h12" stroke="currentColor" stroke-width="1.4" opacity="0.35"/>' +
+            '<path d="M2 8h12" stroke="currentColor" stroke-width="2"/>' +
+            '<path d="M2 11.5h12" stroke="currentColor" stroke-width="1.4" opacity="0.35"/>'
+        )
+      }
     ],
     [
       { label: "↶", title: "元に戻す", command: "undo" },
@@ -134,7 +232,11 @@
         }
         var button = document.createElement("button");
         button.type = "button";
-        button.textContent = item.label;
+        if (item.icon) {
+          button.innerHTML = item.icon;
+        } else {
+          button.textContent = item.label;
+        }
         button.title = item.title;
         button.dataset.command = item.command;
         button.addEventListener("mousedown", function (event) {
@@ -144,6 +246,10 @@
         button.addEventListener("click", function () {
           if (item.command === "insertImage" && self.onInsertImage) {
             self.onInsertImage();
+            return;
+          }
+          if (item.command === "insertDate") {
+            self.insertCurrentDate();
             return;
           }
           self.execCommand(item.command);
@@ -460,6 +566,22 @@
     selection.removeAllRanges();
     selection.addRange(this.savedRange);
     this.host.focus();
+  };
+
+  /* 「現在の日付を挿入」ボタン: キャレット位置に日付テキストを入れる */
+  Editor.prototype.insertCurrentDate = function () {
+    var now = new Date();
+    var weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+    var text =
+      now.getFullYear() +
+      "年" +
+      (now.getMonth() + 1) +
+      "月" +
+      now.getDate() +
+      "日（" +
+      weekdays[now.getDay()] +
+      "）";
+    this.execCommand("insertText", text);
   };
 
   Editor.prototype.execCommand = function (command, value) {

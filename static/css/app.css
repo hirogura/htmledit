@@ -593,6 +593,12 @@ textarea.input {
   color: var(--text);
 }
 
+.toolbar button svg {
+  display: block;
+  margin: auto;
+  color: currentColor;
+}
+
 .toolbar button:hover {
   background: var(--surface);
   border-color: var(--border-strong);

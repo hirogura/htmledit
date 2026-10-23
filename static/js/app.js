@@ -254,8 +254,8 @@
       var auth = document.createElement("button");
       auth.type = "button";
       auth.className = "site-item-remove";
-      auth.textContent = "🔑";
-      auth.title = "認証情報 (ユーザーID / PAT) を編集";
+      auth.textContent = "⚙";
+      auth.title = "設定を編集 (表示名 / サイトURL / 認証情報)";
       auth.addEventListener("click", function (event) {
         event.stopPropagation();
         openCredentialDialog(site);
