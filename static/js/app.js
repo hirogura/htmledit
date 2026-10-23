@@ -1564,6 +1564,21 @@
     return css;
   }
 
+  /* style ブロック内のルールを水平方向に中央揃えにする (auto マージンを末尾に追加) */
+  function applyCssRuleCentering(css, ruleName) {
+    var ruleRe = new RegExp("(" + ruleName + "\\s*\\{)([^}]*?)(\\})", "i");
+    var matched = ruleRe.exec(css);
+    if (!matched) {
+      return css;
+    }
+    if (/margin[^;}]*auto/i.test(matched[2])) {
+      return css;
+    }
+    return css.replace(ruleRe, function () {
+      return matched[1] + matched[2] + " margin-left: auto; margin-right: auto; " + matched[3];
+    });
+  }
+
   /* 幅の指定を <style> ブロックに反映する (ヘッダー = .site-topbar, 本文 = .container) */
   function applyLayoutWidths(output, settings) {
     if (!/<style\b[^>]*>/i.test(output)) {
@@ -1583,6 +1598,7 @@
       var updated = css;
       if (headerWidth) {
         updated = applyCssWidthRule(updated, "\\.site-topbar", headerWidth);
+        updated = applyCssRuleCentering(updated, "\\.site-topbar");
       }
       if (bodyWidth) {
         updated = applyCssWidthRule(updated, "\\.container", bodyWidth);
