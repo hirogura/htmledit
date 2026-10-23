@@ -220,6 +220,8 @@ public/images/2026/10/22/photo.png
 - 「index.html を作成」ボタンで、モダンなフラットデザインのサンプル HTML を
   `public/index.html` に保存する (既存ファイルは `index-bk.html` にリネームして退避。
   `index-bk.html` が既にある場合は `index-bk-1.html`、`index-bk-2.html`…と連番になる)
+- サンプルには投稿の受け皿として `<article class="posts">` が含まれ、
+  投稿パネルの記事はここに新しい順で追加される
 - 設定値は既存の `public/index.html` から読み込んで初期表示する
   (メニューは `site-topbar` 内のリンクを解析して戻すので、手で編集した内容も引き継げる)
 
@@ -254,7 +256,10 @@ public/images/2026/10/22/photo.png
 タイトル・本文・写真を挿入してファイルを保存します。
 
 - `public/index.html` が存在しない場合はエラーになる (先にページを作成すること)
-- hero セクションが無い場合は `</main>` の直前、
+- 投稿は `public/index.html` 内の `<article class="posts">` (開始タグ) の直下に、
+  新しい記事が上に積まれる形で挿入される
+- `article.posts` が無い場合は `<main class="container">` 内の `<section class="hero">`
+  (閉じタグ) の直後、hero セクションが無い場合は `</main>` の直前、
   `main.container` 自体が無い場合は `</body>` の直前に挿入される
 - 編集中のページが `public/index.html` の場合は、投稿後に内容を再読み込みする
   (未保存の変更がある場合は上書き確認のダイアログを表示する)

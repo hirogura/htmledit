@@ -1082,10 +1082,11 @@
 
   /*
    * 挿入位置を探す:
-   * 1. <main class="container"> 内の <section class="hero"> の閉じタグ直後
-   * 2. hero がなければ </main> の直前
-   * 3. main.container がなければ </body> の直前
-   * 4. いずれもなければ末尾
+   * 1. <article|section|div class="posts"> の開始タグ直後 (投稿はこの直下に新しい順で積まれる)
+   * 2. <main class="container"> 内の <section class="hero"> の閉じタグ直後
+   * 3. hero がなければ </main> の直前
+   * 4. main.container がなければ </body> の直前
+   * 5. いずれもなければ末尾
    */
   function classListOf(tag) {
     var match = /class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
@@ -1093,6 +1094,13 @@
   }
 
   function findPostInsertIndex(html) {
+    var postsTagRe = /<(article|section|div)\b[^>]*>/gi;
+    var postsTag;
+    while ((postsTag = postsTagRe.exec(html))) {
+      if (classListOf(postsTag[0]).indexOf("posts") >= 0) {
+        return postsTag.index + postsTag[0].length;
+      }
+    }
     var mainRe = /<main\b[^>]*>/gi;
     var match;
     while ((match = mainRe.exec(html))) {
@@ -1456,6 +1464,9 @@
       "      <p>ここにサイトの説明を書きます。</p>",
       "    </section>",
       "",
+      '    <article class="posts">',
+      "      <!-- 投稿パネルの記事はこの直下に追加される (新しい記事が上に積まれる) -->",
+      "    </article>",
       "  </main>",
       "",
       '  <footer class="site-footer">&copy; ' + new Date().getFullYear() + ' ' + escapeHtml(title) + "</footer>",
