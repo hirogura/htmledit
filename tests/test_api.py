@@ -664,6 +664,94 @@ class ApiTestCase(unittest.TestCase):
         status, payload = self.request("GET", "/api/sites/nope/tree")
         self.assertEqual(status, 404)
 
+    def test_post_pages_flow(self):
+        status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
+        site_id = payload["site"]["id"]
+        repo = Path(CONFIG.data_dir) / "repos" / site_id
+
+        index_html = (
+            "<!doctype html>\n<html lang=\"ja\">\n<head><meta charset=\"utf-8\" />\n"
+            "<title>テストサイト</title></head>\n<body>\n"
+            "<main class=\"container\">\n<section class=\"hero\"><h1>テストサイト</h1></section>\n"
+            "<article class=\"posts\">"
+            "<!-- 投稿パネルの記事はこの直下に追加される -->"
+            "</article>\n</main>\n</body>\n</html>\n"
+        )
+        status, payload = self.request(
+            "PUT", f"/api/sites/{site_id}/file", {"path": "public/index.html", "content": index_html}
+        )
+        self.assertEqual(status, 200, payload)
+
+        body_html = "<p>これは記事{i:02d}の本文です。...1行目\nこれは記事{i:02d}の2行目\nこれは記事{i:02d}の3行目\nこれは記事{i:02d}の4行目</p>\n"
+        for number in range(1, 22):
+            post_id = f"20261023-{number:06d}"
+            status, payload = self.request(
+                "POST",
+                f"/api/sites/{site_id}/posts",
+                {
+                    "id": post_id,
+                    "title": f"記事 {number:02d}",
+                    "bodyHtml": body_html.format(i=number),
+                },
+            )
+            self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["pages"], 2)
+        self.assertEqual(payload["paths"], ["public/index.html", "public/page/2.html"])
+
+        # 個別ページにはタイトル / 本文 / 戻るリンクが含まれる
+        post_page = (repo / "public/posts/20261023-000021.html").read_text("utf-8")
+        self.assertIn('data-post-id="20261023-000021"', post_page)
+        self.assertIn("<h1>記事 21</h1>", post_page)
+        self.assertIn("これは記事21の4行目", post_page)
+        self.assertIn("一覧ページへ戻る", post_page)
+
+        # トップページはスニペット 20 件 (新しい順) + 「続きを読む」
+        index = (repo / "public/index.html").read_text("utf-8")
+        self.assertEqual(index.count("data-post-id"), 20)
+        self.assertIn('<h2><a href="posts/20261023-000021.html">記事 21</a></h2>', index)
+        self.assertIn("続きを読む", index)
+        self.assertIn("page/2.html", index)
+        self.assertIn("次へ", index)
+        self.assertLess(
+            index.index("20261023-000021"),
+            index.index("20261023-000002"),
+        )
+        self.assertNotIn("20261023-000001", index)
+
+        # 2 ページ目に残りの投稿と「前へ」
+        page2 = (repo / "public/page/2.html").read_text("utf-8")
+        self.assertEqual(page2.count("data-post-id"), 1)
+        self.assertIn("../posts/20261023-000001.html", page2)
+        self.assertIn("前へ", page2)
+        self.assertIn("../index.html", page2)
+
+        # 個別ページの保存は一覧ページに同期される
+        edited = post_page.replace("記事 21</h1>", "記事 21 (修正)</h1>").replace(
+            "これは記事21の本文です。", "更新後の本文です"
+        )
+        status, payload = self.request(
+            "PUT",
+            f"/api/sites/{site_id}/file",
+            {"path": "public/posts/20261023-000021.html", "content": edited},
+        )
+        self.assertEqual(status, 200, payload)
+        self.assertTrue(payload.get("sync", {}).get("ok"))
+        index = (repo / "public/index.html").read_text("utf-8")
+        self.assertIn("記事 21 (修正)", index)
+        self.assertIn("更新後の本文です", index)
+        self.assertIn("記事 10</a></h2>", index)
+
+        # 投稿の削除は一覧から消え、過去ログページも整理される
+        status, payload = self.request(
+            "DELETE", f"/api/sites/{site_id}/file", {"path": "public/posts/20261023-000021.html"}
+        )
+        self.assertEqual(status, 200, payload)
+        index = (repo / "public/index.html").read_text("utf-8")
+        self.assertNotIn("記事 21 (修正)", index)
+        self.assertFalse((repo / "public/page/2.html").exists())
+
+        self.request("DELETE", f"/api/sites/{site_id}", {})
+
 
 class UrlParseTestCase(unittest.TestCase):
     def test_github_urls(self):

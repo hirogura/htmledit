@@ -1082,92 +1082,11 @@
   }
 
   /*
-   * 挿入位置を探す:
-   * 1. <article|section|div class="posts"> の開始タグ直後 (投稿はこの直下に新しい順で積まれる)
-   * 2. <main class="container"> 内の <section class="hero"> の閉じタグ直後
-   * 3. hero がなければ </main> の直前
-   * 4. main.container がなければ </body> の直前
-   * 5. いずれもなければ末尾
+   * 投稿は「1記事=1ページ」で生成する:
+   * - 個別ページ: public/posts/ID.html (タイトル / 本文全文 / 写真) をサーバー側で作成
+   * - 一覧ページ: index.html / page/*.html には「最初の 3 行 (100 文字程度) + 続きを読む」の
+   *   スニペット article (data-post-id="ID") を最大 20 件ずつ配置 (サーバー側で再構築)
    */
-  function classListOf(tag) {
-    var match = /class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
-    return (match ? (match[1] || match[2] || match[3] || "") : "").split(/\s+/);
-  }
-
-  function findPostInsertIndex(html) {
-    var postsTagRe = /<(article|section|div)\b[^>]*>/gi;
-    var postsTag;
-    while ((postsTag = postsTagRe.exec(html))) {
-      if (classListOf(postsTag[0]).indexOf("posts") >= 0) {
-        return postsTag.index + postsTag[0].length;
-      }
-    }
-    var mainRe = /<main\b[^>]*>/gi;
-    var match;
-    while ((match = mainRe.exec(html))) {
-      if (classListOf(match[0]).indexOf("container") < 0) {
-        continue;
-      }
-      var mainStart = mainRe.lastIndex;
-      var sectionRe = /<section\b[^>]*>/gi;
-      sectionRe.lastIndex = mainStart;
-      var section;
-      while ((section = sectionRe.exec(html))) {
-        if (classListOf(section[0]).indexOf("hero") < 0) {
-          continue;
-        }
-        var depth = 1;
-        var tagRe = /<(\/?)section\b[^>]*>/gi;
-        tagRe.lastIndex = sectionRe.lastIndex;
-        var tag;
-        while ((tag = tagRe.exec(html))) {
-          if (tag[1]) {
-            depth -= 1;
-            if (depth === 0) {
-              return tag.index + tag[0].length;
-            }
-          } else {
-            depth += 1;
-          }
-        }
-        break;
-      }
-      var closeMainRe = /<\/main\s*>/i;
-      var closeMain = closeMainRe.exec(html.slice(mainStart));
-      if (closeMain) {
-        return mainStart + closeMain.index;
-      }
-      return html.length;
-    }
-    var closeBody = /<\/body\s*>/i.exec(html);
-    return closeBody ? closeBody.index : html.length;
-  }
-
-  function buildPostBlock(title, body, references, withTimestamp, withDivider) {
-    var lines = ["<h2>" + escapeHtml(title) + "</h2>"];
-    var bodyText = (body || "").replace(/\r\n?/g, "\n").trim();
-    if (bodyText) {
-      lines.push("<p>" + bodyText.split("\n").map(escapeHtml).join("<br>\n") + "</p>");
-    }
-    references.forEach(function (reference) {
-      lines.push('<img src="' + escapeHtml(reference) + '" alt="">');
-      lines.push("<br>");
-    });
-    if (withTimestamp) {
-      /* 本文より小さめ・灰色で投稿日時を入れる */
-      lines.push('<p style="font-size: 0.8em; color: #888;">' + postTimestampText() + "</p>");
-    }
-    if (withDivider) {
-      /* 投稿の区切り (末尾) に水平線を入れる */
-      lines.push("<hr>");
-    }
-    return "\n" + lines.join("\n") + "\n";
-  }
-
-  /* 投稿日時の付与 (例: 2026年10月23日（金）10:07) - エディター側の共通実装を使う */
-  function postTimestampText() {
-    return editor.timestampText();
-  }
 
   /* コミットメッセージの付日 (投稿 YYYY-MM-DD) */
   function postCommitStamp() {
@@ -1176,6 +1095,37 @@
       return String(value).padStart(2, "0");
     };
     return now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate());
+  }
+
+  /* 記事 ID (YYYYMMDD-HHMMSS) - 個別ページのファイル名・スニペットの識別子 */
+  function postIdFromNow() {
+    var now = new Date();
+    var pad = function (value) {
+      return String(value).padStart(2, "0");
+    };
+    return (
+      now.getFullYear() +
+      pad(now.getMonth() + 1) +
+      pad(now.getDate()) +
+      "-" +
+      pad(now.getHours()) +
+      pad(now.getMinutes()) +
+      pad(now.getSeconds())
+    );
+  }
+
+  /* 個別ページの本文部分 (段落 + 写真) を組み立てる */
+  function buildPostBodyHtml(body, references) {
+    var lines = [];
+    var bodyText = (body || "").replace(/\r\n?/g, "\n").trim();
+    if (bodyText) {
+      lines.push("<p>" + bodyText.split("\n").map(escapeHtml).join("<br />\n") + "</p>");
+    }
+    references.forEach(function (reference) {
+      lines.push('<img src="' + escapeHtml(reference) + '" alt="">');
+      lines.push("<br />");
+    });
+    return lines.join("\n");
   }
 
   function submitPostDialog(withPush) {
@@ -1202,6 +1152,8 @@
     }
     var siteId = state.siteId;
     var photos = (state.postPhotos || []).slice();
+    var postId = postIdFromNow();
+    var postPath = "public/posts/" + postId + ".html";
 
     if (state.path === POST_PAGE && editor && editor.dirty) {
       if (!confirm("未保存の変更があります。投稿した内容で public/index.html を上書きしますか？")) {
@@ -1221,7 +1173,8 @@
         return postResizeImage(file, maxSide)
           .then(function (image) {
             toast((index + 1) + " / " + photos.length + " 枚目をアップロード中…", "info");
-            return postUploadImage(siteId, image, POST_PAGE);
+            /* 個別ページ (public/posts/ID.html) からの相対パスで参照する */
+            return postUploadImage(siteId, image, postPath);
           })
           .then(function (reference) {
             references.push(reference);
@@ -1232,25 +1185,20 @@
     uploadChain
       .then(function () {
         return api(
-          "/api/sites/" + encodeURIComponent(siteId) + "/file?path=" + encodeURIComponent(POST_PAGE)
-        ).then(function (payload) {
-          var html = payload.content || "";
-          var index = findPostInsertIndex(html);
-          var block = buildPostBlock(
-            title,
-            body,
-            references,
-            el.postTimestamp.checked,
-            el.postDivider.checked
-          );
-          var updated = html.slice(0, index) + block + html.slice(index);
-          return api("/api/sites/" + encodeURIComponent(siteId) + "/file", {
-            method: "PUT",
-            body: { path: POST_PAGE, content: updated }
-          });
-        });
+          "/api/sites/" + encodeURIComponent(siteId) + "/posts",
+          {
+            method: "POST",
+            body: {
+              id: postId,
+              title: title,
+              bodyHtml: buildPostBodyHtml(body, references),
+              timestamp: el.postTimestamp.checked,
+              divider: el.postDivider.checked
+            }
+          }
+        );
       })
-      .then(function () {
+      .then(function (payload) {
         /* 入力内容をクリアする */
         el.postTitle.value = "";
         el.postBody.value = "";
@@ -1261,7 +1209,11 @@
         /* オプションは既定の状態 (すべて On) に戻す */
         el.postTimestamp.checked = true;
         el.postDivider.checked = true;
-        toast("投稿しました: " + POST_PAGE, "success");
+        toast(
+          "投稿しました: " + (payload.post || postPath) +
+            (payload.pages > 0 ? "\n一覧: " + (payload.paths || []).join(", ") : ""),
+          "success"
+        );
         refreshTree();
         refreshGit();
         if (state.path === POST_PAGE) {

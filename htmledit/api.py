@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 from pathlib import Path
 
-from . import github, gitcmd, selfservice, sites, terminal
+from . import github, gitcmd, posts, selfservice, sites, terminal
 from .config import APP_ROOT, CONFIG
 from .credentials import STORE as CREDENTIALS
 from .sites import REGISTRY, SiteError
@@ -261,6 +261,10 @@ def save_site_file(request: Request, params: dict) -> dict:
         result = sites.write_file(site, path, content)
     except SiteError as exc:
         raise ApiError(400, str(exc)) from exc
+    # 個別投稿ページの保存はトップページ / 過去ログページに同期する
+    sync = posts.sync_saved_post(site, path)
+    if sync is not None:
+        result["sync"] = sync
     return {"ok": True, **result}
 
 
@@ -294,7 +298,38 @@ def delete_site_file(request: Request, params: dict) -> dict:
         result = sites.remove(site, path)
     except SiteError as exc:
         raise ApiError(400, str(exc)) from exc
+    # 投稿の削除も一覧ページへ反映する
+    sync = posts.sync_saved_post(site, result.get("path", path))
+    if sync is not None:
+        result["sync"] = sync
     return {"ok": True, **result}
+
+
+# --------------------------------------------------------------------------
+# 記事 (1記事=1ページ / スニペット / ページネーション)
+# --------------------------------------------------------------------------
+
+@route("POST", r"/api/sites/(?P<site_id>[^/]+)/posts")
+def create_post(request: Request, params: dict) -> dict:
+    """個別投稿ページを作成し、一覧ページを更新する."""
+    site = _site(params["site_id"])
+    payload = request.json()
+    post_id = str(payload.get("id", "")).strip()
+    title = str(payload.get("title", "")).strip()
+    body_html = str(payload.get("bodyHtml", "") or "")
+    with_timestamp = bool(payload.get("timestamp", True))
+    with_divider = bool(payload.get("divider", True))
+    try:
+        return posts.publish(
+            site,
+            post_id,
+            title=title,
+            body_html=body_html,
+            with_timestamp=with_timestamp,
+            with_divider=with_divider,
+        )
+    except SiteError as exc:
+        raise ApiError(400, str(exc)) from exc
 
 
 @route("POST", r"/api/sites/(?P<site_id>[^/]+)/folder")
