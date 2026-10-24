@@ -224,6 +224,45 @@ def _parse_flags(attrs: str) -> tuple[bool, bool]:
     return flag("timestamp"), flag("divider")
 
 
+def _parse_tags(attrs: str) -> str:
+    """article タグの data-post-tags 属性からタグ一覧 (カンマ区切り) を取り出す."""
+    match = re.search(r'data-post-tags\s*=\s*"([^"]*)"', attrs, re.I)
+    return _normalize_tags(match.group(1) if match else "")
+
+
+def _normalize_tags(tags: str) -> str:
+    """タグ入力を正規化する (カンマ/読点/空白/改行区切り → カンマ区切り, 重複除去)."""
+    if isinstance(tags, (list, tuple)):
+        parts: list[str] = [str(tag) for tag in tags]
+    else:
+        parts = re.split(r"[,、;；\s]+", str(tags or ""))
+    seen: set[str] = set()
+    normalized = []
+    for part in parts:
+        tag = part.strip()
+        if tag and tag not in seen:
+            seen.add(tag)
+            normalized.append(tag)
+    return ", ".join(normalized)
+
+
+def _tags_text(tags: str) -> str:
+    """日付の横に表示するタグ文字列 (「tag:メモ, tag:旅行」形式) を返す."""
+    normalized = _normalize_tags(tags)
+    if not normalized:
+        return ""
+    return ", ".join(f"tag: {html.escape(tag, quote=True)}" for tag in normalized.split(", "))
+
+
+def _stamp_text(post_id: str, tags: str = "") -> str:
+    """記事の表示用日時 (タグ指定時は日付の横に「tag:…」を併記) を返す."""
+    stamp = _timestamp_text(post_id)
+    tags_text = _tags_text(tags)
+    if stamp and tags_text:
+        return f"{stamp} {tags_text}"
+    return stamp or tags_text
+
+
 def _first_image_src(body_html: str) -> str:
     """本文 HTML から最初の <img> の src を取り出す (なければ空文字)."""
     match = re.search(r'<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s>]+))', body_html, re.I)
@@ -262,7 +301,7 @@ def _post_page_relpath(post_id: str) -> str:
 # HTML 生成
 # --------------------------------------------------------------------------
 
-def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: bool, with_divider: bool, link: str, thumb_src: str = "") -> str:
+def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: bool, with_divider: bool, link: str, thumb_src: str = "", tags: str = "") -> str:
     snippet, truncated = _snippet_parts(body_html)
     # タイトルは青字・下線にしない (シンプルに本文色で)
     lines = []
@@ -277,7 +316,7 @@ def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: boo
     elif truncated:
         lines.append(f'<p><a href="{link}" style="{_READ_MORE_STYLE}">続きを読む</a></p>')
     if with_timestamp:
-        stamp = _timestamp_text(post_id)
+        stamp = _stamp_text(post_id, tags)
         if stamp:
             lines.append(f'<p style="{_SMALL_TEXT_STYLE}">{stamp}</p>')
     if with_divider:
@@ -285,19 +324,20 @@ def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: boo
     return "\n  ".join(lines)
 
 
-def _post_article(post_id: str, title: str, body_html: str, with_timestamp: bool, with_divider: bool, back_link: str) -> str:
+def _post_article(post_id: str, title: str, body_html: str, with_timestamp: bool, with_divider: bool, back_link: str, tags: str = "") -> str:
+    tag_attr = f' data-post-tags="{html.escape(_normalize_tags(tags), quote=True)}"' if _normalize_tags(tags) else ""
     attrs = " ".join(
         [
             f'class="post-page" data-post-id="{post_id}"',
             f'data-post-timestamp="{"1" if with_timestamp else "0"}"',
-            f'data-post-divider="{"1" if with_divider else "0"}"',
+            f'data-post-divider="{"1" if with_divider else "0"}"{tag_attr}',
         ]
     )
     inner = [f"<h1>{html.escape(title or '無題')}</h1>"]
     if body_html:
         inner.append(body_html)
     if with_timestamp:
-        stamp = _timestamp_text(post_id)
+        stamp = _stamp_text(post_id, tags)
         if stamp:
             inner.append(f'<p style="{_SMALL_TEXT_STYLE}">{stamp}</p>')
     if with_divider:
@@ -480,6 +520,7 @@ def _collect_posts(root: Path, index_html: str) -> list[dict]:
                 "thumb": _first_image_src(body_html),
                 "timestamp": timestamp,
                 "divider": divider,
+                "tags": _parse_tags(match.group(1)),
                 # 一覧からのリンクは個別ページの実在位置を使う (旧形式 posts/ID.html もそのまま)
                 "file": path.relative_to(root / "public").as_posix(),
                 "fallback_inner": None,
@@ -505,6 +546,7 @@ def _collect_posts(root: Path, index_html: str) -> list[dict]:
                 "thumb": "",
                 "timestamp": timestamp,
                 "divider": divider,
+                "tags": _parse_tags(block["attrs"]),
                 "file": _post_page_relpath(block["id"]),
                 "fallback_inner": block["inner"] if not title else None,
             }
@@ -515,6 +557,7 @@ def _collect_posts(root: Path, index_html: str) -> list[dict]:
 def _snippet_for(entry: dict, link: str, on_index: bool) -> str:
     """一覧に表示する article の中身を返す."""
     thumb = _thumb_src(entry.get("thumb") or "", on_index)
+    tags = entry.get("tags") or ""
     if entry["title"]:
         return _snippet_inner(
             entry["id"],
@@ -524,10 +567,11 @@ def _snippet_for(entry: dict, link: str, on_index: bool) -> str:
             entry.get("divider", True),
             link,
             thumb,
+            tags,
         )
     if entry.get("fallback_inner"):
         return entry["fallback_inner"]
-    return _snippet_inner(entry["id"], "", entry.get("body") or "", entry.get("timestamp", True), entry.get("divider", True), link, thumb)
+    return _snippet_inner(entry["id"], "", entry.get("body") or "", entry.get("timestamp", True), entry.get("divider", True), link, thumb, tags)
 
 
 def rebalance(site: Site) -> dict:
@@ -569,13 +613,22 @@ def rebalance(site: Site) -> dict:
         return {"ok": True, "posts": len(entries), "pages": total, "paths": paths}
 
 
-def publish(site: Site, post_id: str, title: str, body_html: str = "", with_timestamp: bool = True, with_divider: bool = True) -> dict:
+def publish(
+    site: Site,
+    post_id: str,
+    title: str,
+    body_html: str = "",
+    with_timestamp: bool = True,
+    with_divider: bool = True,
+    tags: str = "",
+) -> dict:
     """個別ページ (public/posts/YYYY/MM/DD/ID.html) を作成し、一覧ページを再構築する."""
     with _LOCK:
         post_id = (post_id or "").strip()
         if not POST_ID_RE.match(post_id):
             raise SiteError("投稿 ID は YYYYMMDD-HHMMSS 形式で指定してください。")
         title = (title or "").strip() or "無題"
+        tags = _normalize_tags(tags)
         root = Path(site.path)
         index_path = root / "public" / "index.html"
         index_html = ""
@@ -588,7 +641,9 @@ def publish(site: Site, post_id: str, title: str, body_html: str = "", with_time
         page_title = f"{title} - {site_title}" if site_title and site_title != title else title
         rel_page = _post_page_relpath(post_id)
         depth = len(PurePosixPath(rel_page).parent.parts)
-        article_html = _post_article(post_id, title, body_html, with_timestamp, with_divider, "../" * depth + "index.html")
+        article_html = _post_article(
+            post_id, title, body_html, with_timestamp, with_divider, "../" * depth + "index.html", tags
+        )
         doc = _render_post_document(index_html, article_html, page_title, depth)
         post_path = f"public/{rel_page}"
         sites.write_file(site, post_path, doc)

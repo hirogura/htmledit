@@ -696,6 +696,7 @@ class ApiTestCase(unittest.TestCase):
                     "id": post_id,
                     "title": f"記事 {number:02d}",
                     "bodyHtml": payload_body,
+                    "tags": "メモ, 旅行" if number == 21 else "",
                 },
             )
             self.assertEqual(status, 200, payload)
@@ -706,6 +707,13 @@ class ApiTestCase(unittest.TestCase):
         self.assertEqual(payload["post"], "public/posts/2026/10/23/20261023-000021.html")
         post_page = (repo / "public/posts/2026/10/23/20261023-000021.html").read_text("utf-8")
         self.assertIn('data-post-id="20261023-000021"', post_page)
+        self.assertIn("data-post-tags=\"メモ, 旅行\"", post_page)
+        # 日付の横に「tag: …」が同じスタイルの段落で表示される
+        self.assertIn(
+            "<p style=\"font-size: 0.8em; color: #888;\">2026年10月23日（金）00:00 tag: メモ, tag: 旅行</p>",
+            post_page,
+        )
+        self.assertIn("tag: メモ, tag: 旅行", post_page)
         self.assertIn("<h1>記事 21</h1>", post_page)
         self.assertIn("これは記事21の4行目", post_page)
         self.assertIn("一覧ページへ戻る", post_page)

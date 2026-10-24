@@ -1197,7 +1197,8 @@
               title: title,
               bodyHtml: buildPostBodyHtml(body, references),
               timestamp: el.postTimestamp.checked,
-              divider: el.postDivider.checked
+              divider: el.postDivider.checked,
+              tags: el.postTags.value
             }
           }
         );
@@ -1206,6 +1207,7 @@
         /* 入力内容をクリアする */
         el.postTitle.value = "";
         el.postBody.value = "";
+        el.postTags.value = "";
         state.postPhotos = [];
         renderPostPhotoList();
         el.postError.hidden = true;
@@ -1586,8 +1588,8 @@
       "      return [];",
       "    }",
       "    var tags = [];",
-      "    match[1].split(/[,、\\s]+/).forEach(function (tag) {",
-      '      tag = (tag || "").trim();',
+      "    match[1].split(/[,、\\s]+/).forEach(function (raw) {",
+      '      var tag = (raw || "").replace(/^(?:tags?|タグ)\\s*[:：]/i, "").trim();',
       "      if (tag) {",
       "        tags.push(tag);",
       "      }",
@@ -3834,6 +3836,7 @@
     el.postBody = $("post-body");
     el.postPhotos = $("post-photos");
     el.postPhotoList = $("post-photo-list");
+    el.postTags = $("post-tags");
     el.handwritingPane = $("handwriting-pane");
     el.handwritingCanvas = $("handwriting-canvas");
     el.btnHandwritingOpen = $("btn-handwriting-open");

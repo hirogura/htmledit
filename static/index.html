@@ -13,7 +13,7 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.3.0.2</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.3.1.0</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
@@ -74,6 +74,11 @@
             <span class="field-label">画像の長辺最大幅 (px)</span>
             <input class="input" type="number" id="post-max-side" min="64" max="8192" step="1" value="1024" />
             <p class="field-hint">この幅を超える画像は自動でリサイズして保存します。</p>
+          </label>
+          <label class="field">
+            <span class="field-label">タグ (カンマ区切り)</span>
+            <input class="input" type="text" id="post-tags" placeholder="メモ, 旅行" />
+            <p class="field-hint">日付の横に「tag:タグ名」の形で表示されます。検索ボックスで「tag:メモ」入力やメニューの「Tag:メモ」リンクで絞り込めます。</p>
           </label>
           <p class="dialog-error" id="post-error" hidden></p>
           <div class="btn-row">

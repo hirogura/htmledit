@@ -319,6 +319,7 @@ def create_post(request: Request, params: dict) -> dict:
     body_html = str(payload.get("bodyHtml", "") or "")
     with_timestamp = bool(payload.get("timestamp", True))
     with_divider = bool(payload.get("divider", True))
+    tags = str(payload.get("tags", "") or "")
     try:
         return posts.publish(
             site,
@@ -327,6 +328,7 @@ def create_post(request: Request, params: dict) -> dict:
             body_html=body_html,
             with_timestamp=with_timestamp,
             with_divider=with_divider,
+            tags=tags,
         )
     except SiteError as exc:
         raise ApiError(400, str(exc)) from exc
