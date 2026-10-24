@@ -3487,15 +3487,21 @@
       memoSaveTimer = null;
     }
     busy(el.btnMemoSave, true);
-    api("/api/memo", { method: "PUT", body: { content: el.memoText.value } })
+    var content = el.memoText.value;
+    api("/api/memo", { method: "PUT", body: { content: content } })
       .then(function (payload) {
         el.memoStatus.textContent = "保存しました: " + payload.path;
         if (!auto) toast("メモを保存しました: " + payload.path, "success");
-        markMemoClean();
+        // 保存中に入力が変わっていたら未保存状態を保つ（次の自動保存に任せる）
+        if (el.memoText.value === content) {
+          markMemoClean();
+        }
       })
       .catch(function (error) {
         el.memoStatus.textContent = "保存に失敗しました: " + error.message;
         if (!auto) toast("メモの保存に失敗しました: " + error.message, "error");
+        // 未保存のまま点滅させ、数秒後に自動リトライする
+        markMemoDirty();
       })
       .finally(function () {
         busy(el.btnMemoSave, false);

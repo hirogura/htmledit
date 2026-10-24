@@ -1193,7 +1193,9 @@ textarea.input {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
-.btn-memo-save.is-dirty {
+#btn-memo-save.is-dirty {
+  color: var(--warning);
+  border-color: var(--warning);
   animation: memo-save-blink 0.8s ease-in-out infinite;
 }
 .memo-text {
