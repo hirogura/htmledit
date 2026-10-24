@@ -818,11 +818,10 @@ class ApiTestCase(unittest.TestCase):
         self.assertIn("border-left: 4px solid", post22)
         index = (repo / "public/index.html").read_text("utf-8")
         self.assertIn('id="site-code-copy-script"', index)
-        # 一覧のスニペットでもコードブロックは <pre> のまま表示される (コピーできる)
-        self.assertIn(
-            '<pre class="site-code-block">print(&quot;hello&quot;)</pre>',
-            index,
-        )
+        # 一覧のスニペットではコードブロックをテキスト行として表示する (デザイン上の都合)
+        self.assertIn("print(&quot;hello&quot;)", index)
+        snippet_html = index[index.index("20261023-000022") : index.index("20261023-000022") + 800]
+        self.assertNotIn("<pre", snippet_html)
 
         self.request("DELETE", f"/api/sites/{site_id}", {})
 

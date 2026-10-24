@@ -309,12 +309,12 @@ def _code_text(inner: str) -> str:
 def _snippet_parts(body_html: str) -> tuple[list, bool]:
     """本文から最初の 3 行 (最大 100 文字程度) のスニペットを取り出す.
 
-    戻り値は (チャンク, 切り詰めたか)。チャンクは ("p", 行リスト) か
-    ("code", コード行リスト)。コードブロック (pre.site-code-block) は一覧でも
-    <pre> のまま表示してコピーボタンを効かせる。
+    戻り値は (チャンク, 切り詰めたか)。チャンクは現在常に ("p", 行リスト)
+    (コードブロックは一覧のスニペットではテキスト行として表示し、記事ページ
+    でだけ <pre> として表示する)。件施行前の都合でチャンク構造は保持。
     """
     source = body_html or ""
-    items = []  # [("p" | "code", 行テキスト)]
+    items = []  # [("p", 行テキスト)]
 
     def push_text(segment: str) -> None:
         for line in _plain_text(segment).split("\n"):
@@ -324,7 +324,7 @@ def _snippet_parts(body_html: str) -> tuple[list, bool]:
     def push_code(inner: str) -> None:
         for line in _code_text(inner).split("\n"):
             if line.strip():
-                items.append(("code", line))
+                items.append(("p", line))
 
     position = 0
     for match in _CODE_BLOCK_RE.finditer(source):
