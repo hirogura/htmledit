@@ -3664,7 +3664,10 @@
 
   /* 区切りがリサイズする対象のパネルを求める。
      右隣がエディターなら左のパネル、左隣なら右のパネル、
-     どちらでもなければ右隣のパネルを対象にする。 */
+     どちらでもなければ右隣のパネルを対象にする。
+     返り値は { pane: 対象, flip: 区切りが対象の左辺にあるなら true }。
+     区切りをカーソルに追従させるため、対象が区切りの左辺
+     (右隣パネル) の場合はドラッグ量の符号を反転させる。 */
   function resizerTarget(resizer) {
     var node;
     var left = null;
@@ -3685,9 +3688,13 @@
       }
       node = node.nextElementSibling;
     }
-    if (right && right.classList.contains("editor-pane")) return left;
-    if (left && left.classList.contains("editor-pane")) return right;
-    return right || left;
+    if (right && right.classList.contains("editor-pane")) {
+      return left ? { pane: left, flip: false } : null;
+    }
+    if (left && left.classList.contains("editor-pane")) {
+      return right ? { pane: right, flip: true } : null;
+    }
+    return right ? { pane: right, flip: true } : null;
   }
 
   function rebuildResizers() {
@@ -3712,13 +3719,15 @@
         if (!target) return;
         dragging = true;
         startX = e.clientX;
-        startW = target.getBoundingClientRect().width;
+        startW = target.pane.getBoundingClientRect().width;
         e.preventDefault();
       });
       document.addEventListener("mousemove", function (e) {
         if (!dragging) return;
-        var newW = Math.max(120, startW + (e.clientX - startX));
-        target.style.width = newW + "px";
+        var dx = e.clientX - startX;
+        if (target.flip) dx = -dx;
+        var newW = Math.max(120, startW + dx);
+        target.pane.style.width = newW + "px";
       });
       document.addEventListener("mouseup", function () {
         dragging = false;
