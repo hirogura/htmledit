@@ -912,6 +912,29 @@ textarea.input {
   min-width: 0;
 }
 
+.logo-picker,
+.color-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.logo-picker .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.color-picker input[type="color"] {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+}
+
 .toast-container {
   position: fixed;
   right: 16px;

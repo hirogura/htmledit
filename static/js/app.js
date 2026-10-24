@@ -1393,16 +1393,26 @@
   }
 
   function buildTopbarHtml(items, brand) {
-    var hasBrand = !!(brand && brand.title);
+    var hasBrand = !!(brand && (brand.title || brand.logo));
     if (!items.length && !hasBrand) {
       return "";
     }
     var parts = ['<header class="' + TOPBAR_CLASS + '">'];
     if (hasBrand) {
       parts.push('    <div class="site-brand">');
-      parts.push(
-        '      <span class="site-brand-title">' + escapeHtml(brand.title) + "</span>"
-      );
+      if (brand.logo) {
+        parts.push(
+          '      <img class="site-logo" src="' +
+            escapeHtml(brand.logo) +
+            '" alt="' +
+            escapeHtml(brand.title || "サイトロゴ") +
+            '" />'
+        );
+      } else {
+        parts.push(
+          '      <span class="site-brand-title">' + escapeHtml(brand.title) + "</span>"
+        );
+      }
       if (brand.desc) {
         parts.push('      <span class="site-brand-desc">' + escapeHtml(brand.desc) + "</span>");
       }
@@ -1424,17 +1434,20 @@
   /* サンプル HTML を生成する (投稿用の container / hero 構成を含む) */
   function buildSampleHtml(settings) {
     var title = settings.title || "サイト";
-    var brand = { title: title, desc: (settings.desc || "").trim() };
+    var brand = {
+      title: title,
+      desc: (settings.desc || "").trim(),
+      logo: (settings.logo || "").trim()
+    };
     var menuHtml = buildTopbarHtml(settings.items, brand);
     var headerWidth = normalizeCssMeasure(settings.headerWidth, "100%");
     var bodyWidth = normalizeCssMeasure(settings.bodyWidth, "760px");
+    var headerHeight = normalizeCssHeight(settings.headerHeight, "");
+    var headerColor = normalizeCssColor(settings.headerColor, "");
     var iconLink = settings.icon
       ? '\n    <link rel="icon" href="' + escapeHtml(settings.icon) + '" />'
       : "";
-    var css = [
-      "    * { box-sizing: border-box; }",
-      "    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; color: #2b3138; background: #fff; line-height: 1.7; }",
-      "",
+    var topbarCss = [
       "    .site-topbar {",
       "      position: sticky;",
       "      top: 0;",
@@ -1446,12 +1459,22 @@
       "      max-width: " + headerWidth + ";",
       "      margin: 0 auto;",
       "      padding: 10px 20px;",
-      "      background: #fff;",
-      "      border-bottom: 1px solid #e2e6ea;",
-      "    }",
+      "      background: " + (headerColor || "#fff") + ";",
+      "      border-bottom: 1px solid #e2e6ea;"
+    ];
+    if (headerHeight) {
+      topbarCss.splice(6, 0, "      height: " + headerHeight + ";");
+    }
+    topbarCss.push("    }");
+    var css = [
+      "    * { box-sizing: border-box; }",
+      "    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; color: #2b3138; background: #fff; line-height: 1.7; }",
+      "",
+      topbarCss.join("\n"),
       "    .site-brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }",
       "    .site-brand-title { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
       "    .site-brand-desc { color: #8a929c; font-size: 12px; }",
+      "    .site-topbar .site-logo { display: block; width: auto; max-width: 100%; }",
       '    .site-topbar nav { display: flex; flex-wrap: wrap; gap: 18px; margin-left: auto; }',
       '    .site-topbar a { color: #37414c; text-decoration: none; font-size: 14px; }',
       '    .site-topbar a:hover { color: #2563eb; }',
@@ -1500,18 +1523,18 @@
     return lines.join("\n");
   }
 
-  /* style ブロック内のルールに max-width を設定する (既存値があれば置換) */
-  function applyCssWidthRule(css, ruleName, value) {
+  /* style ブロック内のルールに property を設定する (既存値があれば置換) */
+  function applyCssRuleProperty(css, ruleName, property, value) {
     var valueRe = new RegExp(
-      "(" + ruleName + "\\s*\\{[^}]*)max-width\\s*:\\s*[^;}]+",
+      "(" + ruleName + "\\s*\\{[^}]*)(?<![\\w-])" + property + "\\s*:\\s*[^;}]+",
       "i"
     );
     if (valueRe.test(css)) {
-      return css.replace(valueRe, "$1max-width: " + value);
+      return css.replace(valueRe, "$1" + property + ": " + value);
     }
     var openRe = new RegExp("(" + ruleName + "\\s*\\{)", "i");
     if (openRe.test(css)) {
-      return css.replace(openRe, "$1 max-width: " + value + ";");
+      return css.replace(openRe, "$1 " + property + ": " + value + ";");
     }
     return css;
   }
@@ -1531,14 +1554,16 @@
     });
   }
 
-  /* 幅の指定を <style> ブロックに反映する (ヘッダー = .site-topbar, 本文 = .container) */
+  /* 幅・高さ・色の指定を <style> ブロックに反映する (ヘッダー = .site-topbar, 本文 = .container) */
   function applyLayoutWidths(output, settings) {
     if (!/<style\b[^>]*>/i.test(output)) {
       return output;
     }
     var headerWidth = normalizeCssMeasure(settings.headerWidth, "");
+    var headerHeight = normalizeCssHeight(settings.headerHeight, "");
+    var headerColor = normalizeCssColor(settings.headerColor, "");
     var bodyWidth = normalizeCssMeasure(settings.bodyWidth, "");
-    if (!headerWidth && !bodyWidth) {
+    if (!headerWidth && !bodyWidth && !headerHeight && !headerColor) {
       return output;
     }
     return output.replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style\s*>)/i, function (
@@ -1549,11 +1574,17 @@
     ) {
       var updated = css;
       if (headerWidth) {
-        updated = applyCssWidthRule(updated, "\\.site-topbar", headerWidth);
+        updated = applyCssRuleProperty(updated, "\\.site-topbar", "max-width", headerWidth);
         updated = applyCssRuleCentering(updated, "\\.site-topbar");
       }
+      if (headerHeight) {
+        updated = applyCssRuleProperty(updated, "\\.site-topbar", "height", headerHeight);
+      }
+      if (headerColor) {
+        updated = applyCssRuleProperty(updated, "\\.site-topbar", "background", headerColor);
+      }
       if (bodyWidth) {
-        updated = applyCssWidthRule(updated, "\\.container", bodyWidth);
+        updated = applyCssRuleProperty(updated, "\\.container", "max-width", bodyWidth);
       }
       if (updated === css) {
         return whole;
@@ -1567,7 +1598,8 @@
     var output = html;
     var brand = {
       title: (settings.title || "").trim(),
-      desc: (settings.desc || "").trim()
+      desc: (settings.desc || "").trim(),
+      logo: (settings.logo || "").trim()
     };
 
     if (settings.title) {
@@ -1624,20 +1656,40 @@
     return rows;
   }
 
-  /* 幅の指定を既存 html の style ブロックから読み取る */
+  /* 幅・高さ・色の指定を既存 html の style ブロックから読み取る */
+  function readDeclaration(ruleBody, property) {
+    var re = new RegExp("(?:^|;[\\s]*)" + property + "\\s*:\\s*([^;}]+)", "i");
+    var m = re.exec(ruleBody);
+    return m ? m[1].trim() : "";
+  }
+
   function readLayoutWidthsFromHtml(html) {
     var match = /<style\b[^>]*>([\s\S]*?)<\/style\s*>/i.exec(html);
     var result = {};
     if (!match) {
       return result;
     }
-    var topbar = /\.site-topbar\s*\{[^}]*?max-width\s*:\s*([^;}]+)/i.exec(match[1]);
-    if (topbar) {
-      result.headerWidth = topbar[1].trim();
+    var topbarRule = /\.site-topbar\s*\{([^}]*)\}/i.exec(match[1]);
+    if (topbarRule) {
+      var width = readDeclaration(topbarRule[1], "max-width");
+      if (width) {
+        result.headerWidth = width;
+      }
+      var height = readDeclaration(topbarRule[1], "height");
+      if (height) {
+        result.headerHeight = height;
+      }
+      var background = readDeclaration(topbarRule[1], "background");
+      if (background) {
+        result.headerColor = background;
+      }
     }
-    var container = /\.container\s*\{[^}]*?max-width\s*:\s*([^;}]+)/i.exec(match[1]);
-    if (container) {
-      result.bodyWidth = container[1].trim();
+    var containerRule = /\.container\s*\{([^}]*)\}/i.exec(match[1]);
+    if (containerRule) {
+      var bodyWidth = readDeclaration(containerRule[1], "max-width");
+      if (bodyWidth) {
+        result.bodyWidth = bodyWidth;
+      }
     }
     return result;
   }
@@ -1742,6 +1794,54 @@
     return fallback;
   }
 
+  /* 高さの指定を CSS に安全に使える形 (auto / ピクセル) に整える (数値は px 扱い) */
+  function normalizeCssHeight(value, fallback) {
+    var text = (value || "").trim();
+    if (!text) {
+      return fallback;
+    }
+    if (/^auto$/i.test(text)) {
+      return "auto";
+    }
+    if (/^\d+(\.\d+)?$/i.test(text)) {
+      return text + "px";
+    }
+    if (/^\d+(\.\d+)?px$/i.test(text)) {
+      return text.toLowerCase();
+    }
+    return fallback;
+  }
+
+  /* 背景色を CSS に安全に使える形 (#rgb / #rrggbb) に整える (白は既定として扱い空を返す) */
+  function normalizeCssColor(value, fallback) {
+    var text = (value || "").trim();
+    if (!text) {
+      return fallback;
+    }
+    if (/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(text)) {
+      text = text.toLowerCase();
+      if (text === "#fff" || text === "#ffffff") {
+        return fallback;
+      }
+      return text;
+    }
+    return fallback;
+  }
+
+  /* 既存 html の上部メニューからロゴ画像の参照を読み取る */
+  function readLogoFromHtml(html) {
+    var topbar = topbarHeaderPattern().exec(html);
+    if (!topbar) {
+      return "";
+    }
+    var img = /<img\b[^>]*class=["'][^"']*site-logo[^"']*["'][^>]*>/i.exec(topbar[0]);
+    if (!img) {
+      return "";
+    }
+    var src = /src\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(img[0]);
+    return src ? (src[1] || src[2] || src[3] || "").trim() : "";
+  }
+
   function openSiteSettings() {
     if (!state.siteId) {
       toast("先にサイトを追加してください。", "warn");
@@ -1755,6 +1855,9 @@
     el.settingsIcon.value = "favicon.svg";
     el.settingsHeaderWidth.value = "";
     el.settingsBodyWidth.value = "";
+    el.settingsHeaderHeight.value = "";
+    el.settingsHeaderColor.value = "#ffffff";
+    el.settingsLogo.value = "";
     state.settingsMenuRows = [];
     renderMenuRows(state.settingsMenuRows);
     el.settingsError.hidden = true;
@@ -1794,6 +1897,16 @@
         if (widths.bodyWidth) {
           el.settingsBodyWidth.value = widths.bodyWidth;
         }
+        if (widths.headerHeight) {
+          el.settingsHeaderHeight.value = widths.headerHeight;
+        }
+        if (widths.headerColor) {
+          el.settingsHeaderColor.value = normalizeCssColor(widths.headerColor, "#ffffff");
+        }
+        var logo = readLogoFromHtml(html);
+        if (logo) {
+          el.settingsLogo.value = logo;
+        }
       })
       .catch(function () {
         /* index.html が無い場合は空欄のまま */
@@ -1821,6 +1934,9 @@
       icon: normalizeIconReference(el.settingsIcon.value),
       headerWidth: el.settingsHeaderWidth.value.trim(),
       bodyWidth: el.settingsBodyWidth.value.trim(),
+      headerHeight: el.settingsHeaderHeight.value.trim(),
+      headerColor: el.settingsHeaderColor.value.trim(),
+      logo: normalizeIconReference(el.settingsLogo.value),
       items: readMenuRows()
     };
 
@@ -3006,6 +3122,38 @@
     el.btnRefreshTree.addEventListener("click", refreshTree);
     el.btnSiteSettings.addEventListener("click", openSiteSettings);
     el.btnSettingsMenuAdd.addEventListener("click", addMenuRow);
+    el.btnSettingsHeaderColorClear.addEventListener("click", function () {
+      el.settingsHeaderColor.value = "#ffffff";
+    });
+    el.btnSettingsLogoUpload.addEventListener("click", function () {
+      el.settingsLogoFile.click();
+    });
+    el.settingsLogoFile.addEventListener("change", function () {
+      var file = el.settingsLogoFile.files && el.settingsLogoFile.files[0];
+      el.settingsLogoFile.value = "";
+      if (!file) {
+        return;
+      }
+      if (!state.siteId) {
+        toast("先にサイトを追加してください。", "warn");
+        return;
+      }
+      el.btnSettingsLogoUpload.disabled = true;
+      postUploadImage(state.siteId, file, POST_PAGE)
+        .then(function (reference) {
+          el.settingsLogo.value = reference;
+          toast("ロゴをアップロードしました: " + reference, "success");
+        })
+        .catch(function (error) {
+          toast(error.message || String(error), "error");
+        })
+        .finally(function () {
+          el.btnSettingsLogoUpload.disabled = false;
+        });
+    });
+    el.btnSettingsLogoClear.addEventListener("click", function () {
+      el.settingsLogo.value = "";
+    });
     el.btnSettingsApply.addEventListener("click", function () {
       submitSiteSettings("apply");
     });
@@ -3255,6 +3403,13 @@
     el.settingsBodyWidth = $("settings-body-width");
     el.settingsMenuRows = $("settings-menu-rows");
     el.btnSettingsMenuAdd = $("btn-settings-menu-add");
+    el.settingsHeaderHeight = $("settings-header-height");
+    el.settingsHeaderColor = $("settings-header-color");
+    el.btnSettingsHeaderColorClear = $("btn-settings-header-color-clear");
+    el.settingsLogo = $("settings-logo");
+    el.btnSettingsLogoUpload = $("btn-settings-logo-upload");
+    el.btnSettingsLogoClear = $("btn-settings-logo-clear");
+    el.settingsLogoFile = $("settings-logo-file");
     el.settingsError = $("settings-error");
     el.btnSettingsCreate = $("btn-settings-create");
     el.btnSettingsApply = $("btn-settings-apply");

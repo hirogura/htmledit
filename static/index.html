@@ -13,7 +13,7 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.2.7.4</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.2.8.0</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
@@ -287,8 +287,30 @@
           <input class="input" type="text" id="settings-desc" placeholder="サイトの一行説明" />
           <p class="field-hint">上部メニューと一緒に固定表示されます (空欄で非表示)。</p>
         </label>
+        <label class="field">
+          <span class="field-label">サイトロゴの指定</span>
+          <div class="logo-picker">
+            <input class="input" type="text" id="settings-logo" placeholder="images/logo.png" />
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-settings-logo-upload">
+              画像をアップロード
+            </button>
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm"
+              id="btn-settings-logo-clear"
+              title="ロゴをやめてサイト名の文字に戻す"
+            >
+              ×
+            </button>
+          </div>
+          <input type="file" id="settings-logo-file" accept="image/*" hidden />
+          <p class="field-hint">
+            サイト名の文字の代わりにヘッダーへ表示する画像。あらかじめロゴ画像を作成してからアップロードします
+            (推奨サイズ: 約 250×80px)。指定がなければサイト名の文字を表示します。
+          </p>
+        </label>
         <fieldset class="fieldset">
-          <legend class="field-label">幅の指定</legend>
+          <legend class="field-label">幅・高さ・色の指定</legend>
           <label class="field">
             <span class="field-label">ヘッダー部分の幅</span>
             <input class="input" type="text" id="settings-header-width" placeholder="100% または 1200px" />
@@ -301,6 +323,26 @@
             <input class="input" type="text" id="settings-body-width" placeholder="760px" />
             <p class="field-hint">
               本文コンテナ (container) の最大幅。パーセント (%) か固定値 (px など) で指定します。
+            </p>
+          </label>
+          <label class="field">
+            <span class="field-label">ヘッダー部分の高さ</span>
+            <input class="input" type="text" id="settings-header-height" placeholder="64px" />
+            <p class="field-hint">
+              上部固定メニュー (site-topbar) の高さ。ピクセル (px) で指定します (例: 64px)。
+            </p>
+          </label>
+          <label class="field">
+            <span class="field-label">ヘッダーの色</span>
+            <div class="color-picker">
+              <input type="color" id="settings-header-color" value="#ffffff" />
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-settings-header-color-clear">
+                既定に戻す
+              </button>
+            </div>
+            <p class="field-hint">
+              上部固定メニューの背景色。カラーパレットから選択します。
+              白 (#ffffff) は既定として扱われ、変更しない限り既存のスタイルを書き換えません。
             </p>
           </label>
         </fieldset>
