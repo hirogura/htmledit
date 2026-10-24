@@ -211,8 +211,11 @@
           clearGitPane();
           return;
         }
+        var savedId = rememberSite(null);
         var current = state.sites.filter(function (site) {
           return site.id === state.siteId;
+        })[0] || state.sites.filter(function (site) {
+          return site.id === savedId;
         })[0];
         selectSite((current || state.sites[0]).id);
       })
@@ -281,6 +284,19 @@
     });
   }
 
+  function rememberSite(siteId) {
+    try {
+      if (siteId) {
+        window.localStorage.setItem("htmledit.siteId", siteId);
+      } else {
+        siteId = window.localStorage.getItem("htmledit.siteId");
+      }
+    } catch (error) {
+      /* localStorage が使えない環境では記憶せず継続する */
+    }
+    return siteId;
+  }
+
   function selectSite(siteId) {
     var changed = siteId !== state.siteId;
     if (changed && editor && editor.dirty) {
@@ -289,6 +305,9 @@
       }
     }
     state.siteId = siteId;
+    if (siteId) {
+      rememberSite(siteId);
+    }
     if (changed) {
       state.path = null;
       editor.clear();
