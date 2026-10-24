@@ -3663,15 +3663,16 @@
   }
 
   /* 区切りがリサイズする対象のパネルを求める。
-     右隣がエディターなら左のパネル、左隣なら右のパネル、
-     どちらでもなければ右隣のパネルを対象にする。
-     返り値は { pane: 対象, flip: 区切りが対象の左辺にあるなら true }。
-     区切りをカーソルに追従させるため、対象が区切りの左辺
-     (右隣パネル) の場合はドラッグ量の符号を反転させる。 */
+     エディターが区切りの右側にある (＝区切りの位置が右側の
+     パネルの幅に依存しない) ときは左隣のパネルを、
+     それ以外は右隣のパネルを対象にする。こうするとドラッグに
+     区切り位置が追従する。返り値は
+     { pane: 対象, flip: 区切りが対象の左辺にあるなら true }。 */
   function resizerTarget(resizer) {
     var node;
     var left = null;
     var right = null;
+    var editorOnRight = false;
     node = resizer.previousElementSibling;
     while (node) {
       if (node.classList.contains("pane") && !node.classList.contains("is-hidden")) {
@@ -3683,18 +3684,15 @@
     node = resizer.nextElementSibling;
     while (node) {
       if (node.classList.contains("pane") && !node.classList.contains("is-hidden")) {
-        right = node;
-        break;
+        if (!right) right = node;
+        if (node.classList.contains("editor-pane")) editorOnRight = true;
       }
       node = node.nextElementSibling;
     }
-    if (right && right.classList.contains("editor-pane")) {
-      return left ? { pane: left, flip: false } : null;
-    }
-    if (left && left.classList.contains("editor-pane")) {
-      return right ? { pane: right, flip: true } : null;
-    }
-    return right ? { pane: right, flip: true } : null;
+    if (editorOnRight && left) return { pane: left, flip: false };
+    if (right) return { pane: right, flip: true };
+    if (left) return { pane: left, flip: false };
+    return null;
   }
 
   function rebuildResizers() {
