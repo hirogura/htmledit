@@ -32,8 +32,8 @@ _SMALL_TEXT_STYLE = "font-size: 0.8em; color: #888;"
 _THUMB_STYLE = "height: 120px; width: auto; border-radius: 8px; float: right; margin: 0 0 8px 12px;"
 _TITLE_LINK_STYLE = "color: inherit; text-decoration: none;"
 _READ_MORE_STYLE = (
-    "display: inline-block; padding: 3px 14px; border: 1px solid #d5dbe2;"
-    " border-radius: 999px; font-size: 0.85em; color: #5a6470; text-decoration: none;"
+    "display: inline-block; padding: 2px 11px; border: 1px solid #d5dbe2;"
+    " border-radius: 999px; font-size: 0.8em; color: #5a6470; text-decoration: none;"
 )
 _BACK_LINK_LABEL = "一覧ページへ戻る"
 _NAV_STYLE = (
@@ -478,6 +478,7 @@ def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: boo
         lines.append(f'<p style="text-align: right; margin: 0 0 8px;"><img src="{thumb_src}" alt="" style="{_THUMB_STYLE}" /></p>')
     lines.append(f'<h2><a href="{link}" style="{_TITLE_LINK_STYLE}">{html.escape(title or "無題")}</a></h2>')
     read_more_link = f'<a href="{link}" style="{_READ_MORE_STYLE}">続きを読む</a>'
+    read_more_label = "&nbsp;" + read_more_link  # 本文末尾とくっつかないよう一行空ける
     rendered = []
     for kind, chunk_lines in chunks:
         if kind == "code":
@@ -486,7 +487,7 @@ def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: boo
             rendered.append("<p>" + "<br />\n  ".join(html.escape(line) for line in chunk_lines) + "</p>")
     if truncated:
         if rendered and rendered[-1].startswith("<p>"):
-            rendered[-1] = rendered[-1].replace("</p>", read_more_link + "</p>")
+            rendered[-1] = rendered[-1].replace("</p>", read_more_label + "</p>")
         else:
             rendered.append(f"<p>{read_more_link}</p>")
     lines.extend(rendered)
