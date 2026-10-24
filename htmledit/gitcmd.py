@@ -7,13 +7,34 @@ GITHUB_TOKEN 環境変数があれば credential helper 経由で渡す(ディ�
 from __future__ import annotations
 
 import os
+import re
 import subprocess
+import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .config import CONFIG
 
 TOKEN_HELPER = '!f() { echo "username=${GIT_AUTH_USERNAME:-x-access-token}"; echo "password=${GIT_AUTH_TOKEN}"; }; f'
+
+# 同一リポジトリへの git コマンドの直列化 (index.lock 競合を防ぐ)
+_REPO_LOCKS: dict[str, threading.Lock] = {}
+_REPO_LOCKS_GUARD = threading.Lock()
+_INDEX_LOCK_RE = re.compile(r"index\.lock")
+_MAX_ATTEMPTS = 4
+_RETRY_BACKOFF = 0.15
+
+
+def _repo_lock(cwd: str | Path | None) -> threading.Lock:
+    """cwd (リポジトリ) 単位のロックを返す."""
+    key = str(Path(cwd).resolve()) if cwd else ""
+    with _REPO_LOCKS_GUARD:
+        lock = _REPO_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _REPO_LOCKS[key] = lock
+    return lock
 
 
 class GitError(RuntimeError):
@@ -56,6 +77,8 @@ class GitResult:
 def _env(auth: Auth | None = None) -> dict[str, str]:
     env = os.environ.copy()
     env["GIT_TERMINAL_PROMPT"] = "0"
+    # status の opportunistic index 更新を止める (index.lock 競合の温床になるため)
+    env["GIT_OPTIONAL_LOCKS"] = "0"
     env["GIT_SSH_COMMAND"] = env.get("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new")
     env["LC_ALL"] = env.get("LC_ALL", "C.UTF-8")
     env["LANG"] = env.get("LANG", "C.UTF-8")
@@ -94,27 +117,44 @@ def run_git(
     if use_auth and resolve_auth(auth) is not None:
         cmd += _auth_args()
     cmd += args
+    lock = _repo_lock(cwd)
+    lock.acquire()
+    attempt = 0
     try:
-        proc = subprocess.run(
-            cmd,
-            cwd=str(cwd) if cwd else None,
-            env=_env(auth),
-            input=stdin.encode("utf-8") if stdin is not None else None,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=timeout or CONFIG.git_timeout,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise GitError(f"git コマンドがタイムアウトしました: {' '.join(args)}") from exc
-    except FileNotFoundError as exc:  # pragma: no cover - git が無い環境
-        raise GitError("git が見つかりません。git をインストールしてください。") from exc
+        while True:
+            attempt += 1
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    cwd=str(cwd) if cwd else None,
+                    env=_env(auth),
+                    input=stdin.encode("utf-8") if stdin is not None else None,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=timeout or CONFIG.git_timeout,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise GitError(f"git コマンドがタイムアウトしました: {' '.join(args)}") from exc
+            except FileNotFoundError as exc:  # pragma: no cover - git が無い環境
+                raise GitError("git が見つかりません。git をインストールしてください。") from exc
 
-    result = GitResult(
-        args=cmd,
-        returncode=proc.returncode,
-        stdout=proc.stdout.decode("utf-8", "replace"),
-        stderr=proc.stderr.decode("utf-8", "replace"),
-    )
+            result = GitResult(
+                args=cmd,
+                returncode=proc.returncode,
+                stdout=proc.stdout.decode("utf-8", "replace"),
+                stderr=proc.stderr.decode("utf-8", "replace"),
+            )
+            if result.ok:
+                break
+            stderr = result.stderr or result.stdout
+            # 他プロセス (外部エディタ・端末での git 操作) との index.lock 競合は
+            # 少しだけ待って再試行する (自分たちのコマンドは直列化済み)
+            if attempt < _MAX_ATTEMPTS and _INDEX_LOCK_RE.search(stderr):
+                time.sleep(_RETRY_BACKOFF * attempt)
+                continue
+            break
+    finally:
+        lock.release()
     if check and not result.ok:
         raise GitError(_error_message(result), result.stderr, result.returncode)
     return result
