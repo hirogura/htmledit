@@ -1322,6 +1322,11 @@
     );
   }
 
+  /* 上部メニュー内の検索ボックス (site-search フォーム) のパターン */
+  function searchFormPattern() {
+    return /<form\b[^>]*class=["'][^"']*site-search[^"']*["'][^>]*>/i;
+  }
+
   /* メニュー行入力欄 (「項目名」「リンク先」の入力欄ペア) を描画する */
   function renderMenuRows(rows) {
     var wrap = el.settingsMenuRows;
@@ -1392,9 +1397,9 @@
     return items;
   }
 
-  function buildTopbarHtml(items, brand) {
+  function buildTopbarHtml(items, brand, addSearch) {
     var hasBrand = !!(brand && (brand.title || brand.logo));
-    if (!items.length && !hasBrand) {
+    if (!items.length && !hasBrand && !addSearch) {
       return "";
     }
     var parts = ['<header class="' + TOPBAR_CLASS + '">'];
@@ -1427,6 +1432,14 @@
       });
       parts.push("    </nav>");
     }
+    if (addSearch) {
+      parts.push('    <form class="site-search" id="site-search-form" role="search">');
+      parts.push(
+        '      <input type="search" id="site-search-query" name="q" placeholder="記事を検索" aria-label="サイト内検索" />'
+      );
+      parts.push('      <button type="submit">検索</button>');
+      parts.push("    </form>");
+    }
     parts.push("  </header>");
     return parts.join("\n");
   }
@@ -1439,7 +1452,7 @@
       desc: (settings.desc || "").trim(),
       logo: (settings.logo || "").trim()
     };
-    var menuHtml = buildTopbarHtml(settings.items, brand);
+    var menuHtml = buildTopbarHtml(settings.items, brand, settings.addSearch);
     var headerWidth = normalizeCssMeasure(settings.headerWidth, "100%");
     var bodyWidth = normalizeCssMeasure(settings.bodyWidth, "760px");
     var headerHeight = normalizeCssHeight(settings.headerHeight, "");
@@ -1477,7 +1490,19 @@
       "    .site-topbar .site-logo { display: block; width: auto; max-width: 100%; }",
       '    .site-topbar nav { display: flex; flex-wrap: wrap; gap: 18px; margin-left: auto; }',
       '    .site-topbar a { color: #37414c; text-decoration: none; font-size: 14px; }',
-      '    .site-topbar a:hover { color: #2563eb; }',
+      '    .site-topbar a:hover { color: #2563eb; }'
+    ];
+    if (settings.addSearch) {
+      css.push(
+        "    .site-topbar .site-search { display: flex; gap: 6px; margin-left: 8px; }",
+        '    .site-topbar .site-search input[type="search"] { width: 160px; padding: 4px 8px; border: 1px solid #e2e6ea; border-radius: 6px; font-size: 13px; }',
+        '    .site-topbar .site-search button { padding: 4px 10px; border: 1px solid #e2e6ea; background: #fff; border-radius: 6px; font-size: 13px; cursor: pointer; }',
+        '    .site-topbar .site-search button:hover { border-color: #2563eb; color: #2563eb; }',
+        "    .site-search-status { color: #69737e; font-size: 14px; padding: 8px 0; }",
+        "    .site-search-status a { color: #2563eb; }"
+      );
+    }
+    css.push(
       "",
       "    .container { max-width: " + bodyWidth + "; margin: 0 auto; padding: 8px 20px 48px; }",
       "    .hero { padding: 40px 0 8px; border-bottom: 1px solid #eef1f4; margin-bottom: 24px; }",
@@ -1488,7 +1513,8 @@
       "    hr { border: none; border-top: 1px solid #e2e6ea; margin: 24px 0; }",
       "",
       '    .site-footer { border-top: 1px solid #e2e6ea; color: #8a929c; font-size: 12.5px; text-align: center; padding: 16px 0 28px; }'
-    ].join("\n");
+    );
+    css = css.join("\n");
 
     var lines = [
       "<!doctype html>",
@@ -1515,12 +1541,237 @@
       "    </article>",
       "  </main>",
       "",
-      '  <footer class="site-footer">&copy; ' + new Date().getFullYear() + ' ' + escapeHtml(title) + "</footer>",
+      '  <footer class="site-footer">&copy; ' + new Date().getFullYear() + ' ' + escapeHtml(title) + "</footer>"
+    );
+    if (settings.addSearch) {
+      lines.push("", "  " + buildSiteSearchScriptHtml());
+    }
+    lines.push(
       "</body>",
       "</html>",
       ""
     );
     return lines.join("\n");
+  }
+
+  /* 検索ボックス用スクリプト (index.html / page/*.html と記事個別ページを検索する) */
+  function buildSiteSearchScriptHtml() {
+    var js = [
+      "(function () {",
+      '  "use strict";',
+      '  var form = document.getElementById("site-search-form");',
+      '  var input = document.getElementById("site-search-query");',
+      "  if (!form || !input) {",
+      "    return;",
+      "  }",
+      '  var listHost = document.querySelector("article.posts");',
+      '  var baseDir = location.pathname.replace(/[^/]*$/, "");',
+      '  if (/page\\/$/.test(baseDir)) { baseDir = baseDir.replace(/page\\/$/, ""); }',
+      '  var listUrl = baseDir + "index.html";',
+      '  var indexDirRel = "";',
+      "  if (baseDir !== \"/\" ) {",
+      '    var pageDir = location.pathname.replace(/[^/]*$/, "");',
+      "    if (pageDir.indexOf(baseDir) === 0 && pageDir.length > baseDir.length) {",
+      '      indexDirRel = pageDir.slice(baseDir.length).replace(/[^/]+\\/?/g, "../");',
+      "    }",
+      "  }",
+      "  var defaultList = listHost ? listHost.innerHTML : \"\";",
+      "",
+      "  function plainText(value) {",
+      '    return (value || "").replace(/\\s+/g, " ").toLowerCase();',
+      "  }",
+      "",
+      "  function escapeText(text) {",
+      '    var table = { "&": "&amp;", "<": "&lt;", ">": "&gt;", \'"\': "&quot;", "\'": "&#39;" };',
+      '    return (text || "").replace(/[&<>"\']/g, function (c) { return table[c]; });',
+      "  }",
+      "",
+      "  function resolveUrl(href, base) {",
+      "    try {",
+      "      return new URL(href, base).href;",
+      "    } catch (e) {",
+      '      return "";',
+      "    }",
+      "  }",
+      "",
+      "  function toRelative(url) {",
+      "    try {",
+      "      var abs = new URL(url, location.href);",
+      "      var path = abs.pathname;",
+      '      if (baseDir === "/") {',
+      '        if (path.charAt(0) === "/") { path = path.slice(1); }',
+      "      } else if (path.indexOf(baseDir) === 0) {",
+      "        path = path.slice(baseDir.length);",
+      "      } else {",
+      "        return abs.href;",
+      "      }",
+      "      return path + abs.search + abs.hash;",
+      "    } catch (e) {",
+      "      return url;",
+      "    }",
+      "  }",
+      "",
+      "  function rewriteAssets(node, baseUrl) {",
+      "    if (!node || !node.querySelectorAll) {",
+      "      return;",
+      "    }",
+      '    Array.prototype.forEach.call(node.querySelectorAll("[src], [href]"), function (tag) {',
+      '      ["src", "href"].forEach(function (attr) {',
+      '        var raw = tag.getAttribute(attr) || "";',
+      '        if (!raw || raw.charAt(0) === "#" || /^(mailto|javascript|data)[:]/i.test(raw)) {',
+      "          return;",
+      "        }",
+      "        var abs = resolveUrl(raw, baseUrl);",
+      "        if (!abs) {",
+      "          return;",
+      "        }",
+      "        var rel = toRelative(abs);",
+      '        if (rel && rel.indexOf("://") < 0) {',
+      "          rel = indexDirRel + rel;",
+      "        }",
+      "        tag.setAttribute(attr, rel);",
+      "      });",
+      "    });",
+      "  }",
+      "",
+      "  function fetchDoc(url) {",
+      '    return fetch(url, { credentials: "same-origin" }).then(function (response) {',
+      "      if (!response.ok) {",
+      "        throw new Error(String(response.status));",
+      "      }",
+      "      return response.text();",
+      "    }).then(function (text) {",
+      '      return { doc: new DOMParser().parseFromString(text, "text/html"), url: url };',
+      "    });",
+      "  }",
+      "",
+      "  function collectSnippets() {",
+      "    return fetchDoc(resolveUrl(listUrl, location.href)).then(function (first) {",
+      "      var hrefs = [];",
+      '      Array.prototype.forEach.call(first.doc.querySelectorAll("a[href]"), function (anchor) {',
+      '        var href = anchor.getAttribute("href") || "";',
+      '        if (/^page\\/\\d+\\.html$/i.test(href) && hrefs.indexOf(href) < 0) {',
+      "          hrefs.push(href);",
+      "        }",
+      "      });",
+      "      var requests = hrefs.map(function (href) {",
+      '        return fetchDoc(resolveUrl(href, first.url)).catch(function () { return null; });',
+      "      });",
+      "      return Promise.all(requests).then(function (pages) {",
+      '        return [first].concat(pages.filter(function (page) { return page; }));',
+      "      });",
+      "    });",
+      "  }",
+      "",
+      "  function extractSnippets(page) {",
+      "    var items = [];",
+      '    Array.prototype.forEach.call(page.doc.querySelectorAll("article[data-post-id]"), function (block) {',
+      '      var id = block.getAttribute("data-post-id") || "";',
+      "      if (!id) {",
+      "        return;",
+      "      }",
+      '      var link = "";',
+      '      var anchors = block.querySelectorAll("a[href]");',
+      "      if (anchors.length) {",
+      '        var href = anchors[0].getAttribute("href") || "";',
+      '        if (href && href.charAt(0) !== "#") {',
+      "          link = resolveUrl(href, page.url);",
+      "        }",
+      "      }",
+      "      rewriteAssets(block, page.url);",
+      '      items.push({ id: id, html: block.outerHTML, text: plainText(block.textContent), link: link });',
+      "    });",
+      "    return items;",
+      "  }",
+      "",
+      "  function setStatus(message) {",
+      '    listHost.innerHTML = \'<p class="site-search-status">\' + message + "</p>";',
+      "  }",
+      "",
+      "  function runSearch(query) {",
+      '    setStatus("検索中…");',
+      "    collectSnippets().then(function (pages) {",
+      "      var snippets = [];",
+      "      var seenIds = {};",
+      "      pages.forEach(function (page) {",
+      "        extractSnippets(page).forEach(function (item) {",
+      "          if (!seenIds[item.id]) {",
+      "            seenIds[item.id] = true;",
+      "            snippets.push(item);",
+      "          }",
+      "        });",
+      "      });",
+      "      var bodies = {};",
+      "      var urls = [];",
+      "      snippets.forEach(function (item) {",
+      "        if (item.link && !bodies.hasOwnProperty(item.link)) {",
+      "          bodies[item.link] = \"\";",
+      "          urls.push(item.link);",
+      "        }",
+      "      });",
+      '      var needle = plainText(query);',
+      "      return Promise.all(urls.map(function (url) {",
+      "        return fetchDoc(url).then(function (page) {",
+      '          var target = page.doc.querySelector("article[data-post-id]") || page.doc.body;',
+      "          bodies[url] = plainText(target.textContent);",
+      "        }).catch(function () {",
+      '          bodies[url] = "";',
+      "        });",
+      "      })).then(function () {",
+      "        var matches = snippets.filter(function (item) {",
+      "          return item.text.indexOf(needle) >= 0 || (item.link && bodies[item.link].indexOf(needle) >= 0);",
+      "        });",
+      "        renderMatches(matches, query);",
+      "      });",
+      "    }).catch(function () {",
+      '      setStatus("検索に失敗しました。");',
+      "    });",
+      "  }",
+      "",
+      "  function renderMatches(matches, query) {",
+      '    var back = \' <a href="\' + listUrl + \'">一覧に戻る</a>\';',
+      "    if (!matches.length) {",
+      '      listHost.innerHTML = \'<p class="site-search-status">「\' + escapeText(query) + \'」に一致する記事は見つかりませんでした。\' + back + "</p>";',
+      "      return;",
+      "    }",
+      '    listHost.innerHTML = \'<p class="site-search-status"><strong>\' + matches.length + \' 件</strong>ヒット (「\' + escapeText(query) + \'」)\' + back + \'</p>\'',
+      "      + matches.map(function (item) { return item.html; }).join(\"\\n\");",
+      "  }",
+      "",
+      '  form.addEventListener("submit", function (event) {',
+      "    event.preventDefault();",
+      '    var query = (input.value || "").trim();',
+      "    if (!query) {",
+      "      if (listHost) {",
+      "        listHost.innerHTML = defaultList;",
+      "      } else {",
+      '        location.href = listUrl;',
+      "      }",
+      "      return;",
+      "    }",
+      "    if (!listHost) {",
+      '      location.href = listUrl + "?q=" + encodeURIComponent(query);',
+      "      return;",
+      "    }",
+      "    runSearch(query);",
+      "  });",
+      "",
+      "  try {",
+      '    var queryParam = new URLSearchParams(location.search).get("q");',
+      "    if (queryParam && listHost) {",
+      "      input.value = queryParam;",
+      "      runSearch(queryParam);",
+      "    }",
+      "  } catch (e) {",
+      "  }",
+      "})();"
+    ].join("\n");
+    return '<script id="site-search-script">\n' + js + "\n  </script>";
+  }
+
+  /* 検索ボックススクリプト (id="site-search-script" の <script>) のパターン */
+  function siteSearchScriptPattern() {
+    return /<script\b[^>]*\bid=["']site-search-script["'][^>]*>[\s\S]*?<\/script\s*>/i;
   }
 
   /* style ブロック内のルールに property を設定する (既存値があれば置換) */
@@ -1631,14 +1882,43 @@
 
     /* 既存の上部メニューを置き換える (タイトル・説明も出力する。両方空なら削除) */
     output = output.replace(topbarHeaderPattern(), "");
-    var menuHtml = buildTopbarHtml(settings.items, brand);
+    var menuHtml = buildTopbarHtml(settings.items, brand, settings.addSearch);
     if (menuHtml) {
       output = output.replace(/<body\b[^>]*>/i, function (bodyTag) {
         return bodyTag + "\n  " + menuHtml;
       });
     }
     output = applyLayoutWidths(output, settings);
+    /* 検索ボックススクリプトを張り替える (チェックが外れたら除去) */
+    output = output.replace(siteSearchScriptPattern(), "");
+    if (settings.addSearch) {
+      output = output.replace(/<\/body\s*>/i, function (bodyClose) {
+        return "\n  " + buildSiteSearchScriptHtml() + "\n" + bodyClose;
+      });
+    } else {
+      output = stripSearchStyles(output);
+    }
     return output;
+  }
+
+  /* 検索ボックス用の CSS ルール (.site-search を含むセレクター) を取り除く */
+  function stripSearchStyles(html) {
+    return html.replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style\s*>)/i, function (
+      whole,
+      open,
+      css,
+      close
+    ) {
+      var ruleRe = /^[ \t]*\.[^{]*\{[^}]*\}[ \t]*\r?\n?/gm;
+      var updated = css.replace(ruleRe, function (rule) {
+        var selector = rule.slice(0, rule.indexOf("{"));
+        return selector.indexOf("site-search") >= 0 ? "" : rule;
+      });
+      if (updated === css) {
+        return whole;
+      }
+      return open + updated + close;
+    });
   }
 
   /* 上部メニューのリンクをメニュー行のデータ (rows) に戻す */
@@ -1860,6 +2140,7 @@
     el.settingsLogo.value = "";
     state.settingsMenuRows = [];
     renderMenuRows(state.settingsMenuRows);
+    el.settingsAddSearch.checked = false;
     el.settingsError.hidden = true;
     el.settingsDialog.showModal();
     /* 既存の index.html から現在の設定値を取り込む */
@@ -1907,6 +2188,10 @@
         if (logo) {
           el.settingsLogo.value = logo;
         }
+        var topbar = topbarHeaderPattern().exec(html);
+        if (topbar && searchFormPattern().test(topbar[0])) {
+          el.settingsAddSearch.checked = true;
+        }
       })
       .catch(function () {
         /* index.html が無い場合は空欄のまま */
@@ -1937,6 +2222,7 @@
       headerHeight: el.settingsHeaderHeight.value.trim(),
       headerColor: el.settingsHeaderColor.value.trim(),
       logo: normalizeIconReference(el.settingsLogo.value),
+      addSearch: el.settingsAddSearch.checked,
       items: readMenuRows()
     };
 
@@ -3402,6 +3688,7 @@
     el.settingsHeaderWidth = $("settings-header-width");
     el.settingsBodyWidth = $("settings-body-width");
     el.settingsMenuRows = $("settings-menu-rows");
+    el.settingsAddSearch = $("settings-add-search");
     el.btnSettingsMenuAdd = $("btn-settings-menu-add");
     el.settingsHeaderHeight = $("settings-header-height");
     el.settingsHeaderColor = $("settings-header-color");
