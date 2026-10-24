@@ -652,6 +652,35 @@
     return /\.(html?|xhtml)$/i.test(path);
   }
 
+  /* 投稿一覧の「編集」ボタンから、href (相対) をエディターのパスに変換して開く */
+  function resolveEditorHref(href) {
+    var out = (state.path || "").split("/");
+    out.pop();
+    String(href || "").split("/").forEach(function (segment) {
+      if (!segment || segment === ".") {
+        return;
+      }
+      if (segment === "..") {
+        out.pop();
+        return;
+      }
+      out.push(segment);
+    });
+    return out.join("/");
+  }
+
+  function openPostIndividual(href) {
+    var path = resolveEditorHref(href);
+    var found = (state.treeEntries || []).some(function (entry) {
+      return entry.type === "file" && entry.path === path;
+    });
+    if (!found) {
+      toast("個別ページが見つかりません: " + path, "warn");
+      return;
+    }
+    openFile(path);
+  }
+
   /* ------------------------------------------------------------------ */
   /* エクスプローラの右クリックメニュー (selfcode と同じ構成)             */
   /* ------------------------------------------------------------------ */
@@ -4106,6 +4135,9 @@
       onHandwriting: function () {
         state.handwritingTarget = "editor";
         el.handwritingDialog.showModal();
+      },
+      onOpenPostFile: function (href) {
+        openPostIndividual(href);
       }
     });
 

@@ -937,6 +937,25 @@ textarea.input {
   margin-top: 12px;
 }
 
+/* WYSIWYG 投稿一覧の「編集」ボタン (htmledit 内だけの表示) */
+button.htmledit-post-edit {
+  display: inline-block;
+  margin: 0 2px;
+  padding: 1px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 0.75em;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+button.htmledit-post-edit:hover {
+  background: var(--accent);
+  color: #ffffff;
+}
+
 .post-photo-list {
   display: flex;
   flex-direction: column;

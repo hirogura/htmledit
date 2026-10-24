@@ -201,6 +201,102 @@
       .replace(/>/g, "&gt;");
   }
 
+  /* 投稿一覧の「編集」ボタン (/internal only / 保存対象からは常に除外する) */
+  var POST_EDIT_FLAG = "data-htmledit-postedit";
+  var POST_EDIT_STAMP_RE = /^\d{4}年/;
+
+  Editor.prototype._findPostEditButtons = function () {
+    return this.host.querySelectorAll("[" + POST_EDIT_FLAG + "]");
+  };
+
+  Editor.prototype._removePostEditButtons = function () {
+    var removed = [];
+    Array.prototype.forEach.call(this._findPostEditButtons(), function (btn) {
+      var parent = btn.parentNode;
+      if (!parent) {
+        return;
+      }
+      var next = btn.nextSibling;
+      var spacer = btn.previousSibling;
+      if (spacer && spacer.nodeType === 3 && /^[ \u00a0]+$/.test(String(spacer.nodeValue))) {
+        parent.removeChild(spacer);
+      } else {
+        spacer = null;
+      }
+      parent.removeChild(btn);
+      removed.push({ parent: parent, next: next, spacer: spacer, btn: btn });
+    });
+    return removed;
+  };
+
+  Editor.prototype._restorePostEditButtons = function (removed) {
+    removed.forEach(function (item) {
+      if (item.spacer) {
+        item.parent.insertBefore(item.spacer, item.next);
+      }
+      item.parent.insertBefore(item.btn, item.next);
+    });
+  };
+
+  Editor.prototype._decoratePostEdit = function () {
+    var self = this;
+    this._removePostEditButtons();
+    if (this.mode !== "wysiwyg") {
+      return;
+    }
+    var articles = this.host.querySelectorAll("article[data-post-id][data-post-generated]");
+    Array.prototype.forEach.call(articles, function (article) {
+      var link = "";
+      var links = article.querySelectorAll("a[href]");
+      for (var index = 0; index < links.length; index += 1) {
+        var href = (links[index].getAttribute("href") || "").trim();
+        if (href && href.charAt(0) !== "#") {
+          link = href;
+          break;
+        }
+      }
+      if (!link) {
+        return;
+      }
+      var stamp = null;
+      var paragraphs = article.querySelectorAll("p");
+      for (var pos = 0; pos < paragraphs.length; pos += 1) {
+        var paragraph = paragraphs[pos];
+        var style = (paragraph.getAttribute("style") || "").toLowerCase();
+        if (style.indexOf("font-size") === -1) {
+          continue;
+        }
+        var text = (paragraph.textContent || "").replace(/^[ \u00a0]+/, "");
+        if (!POST_EDIT_STAMP_RE.test(text)) {
+          continue;
+        }
+        stamp = paragraph;
+      }
+      if (!stamp) {
+        return;
+      }
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "htmledit-post-edit";
+      button.setAttribute(POST_EDIT_FLAG, "1");
+      button.setAttribute("data-post-edit-href", link);
+      button.contentEditable = "false";
+      button.textContent = "編集";
+      button.title = "この記事の個別ページを開く";
+      button.addEventListener("mousedown", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      button.addEventListener("click", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        self.onOpenPostFile(button.getAttribute("data-post-edit-href") || "");
+      });
+      stamp.appendChild(document.createTextNode(" "));
+      stamp.appendChild(button);
+    });
+  };
+
   function Editor(options) {
     this.host = options.host;
     this.source = options.source;
@@ -215,6 +311,7 @@
     this.onUploadImage = options.onUploadImage || function () {};
     this.onInsertImage = options.onInsertImage || null;
     this.onHandwriting = options.onHandwriting || null;
+    this.onOpenPostFile = options.onOpenPostFile || function () {};
 
     this.mode = "wysiwyg";
     this.path = "";
@@ -928,6 +1025,7 @@
     this.selectedLink = null;
     this.onDirtyChange(false);
     this.emitSelection();
+    this._decoratePostEdit();
     this.updatePreview();
   };
 
@@ -949,7 +1047,10 @@
     if (this.mode === "source") {
       return splitDocument(this.source.value);
     }
-    return { prefix: this.parts.prefix, body: this.host.innerHTML, suffix: this.parts.suffix };
+    var removed = this._removePostEditButtons();
+    var parts = { prefix: this.parts.prefix, body: this.host.innerHTML, suffix: this.parts.suffix };
+    this._restorePostEditButtons(removed);
+    return parts;
   };
 
   Editor.prototype.currentText = function () {
@@ -967,6 +1068,7 @@
       var parts = splitDocument(this.source.value);
       this.parts = { prefix: parts.prefix, body: parts.body, suffix: parts.suffix };
       this.host.innerHTML = parts.body;
+      this._decoratePostEdit();
     }
     this.mode = mode;
     this.host.hidden = mode !== "wysiwyg";
@@ -1011,6 +1113,7 @@
       this.source.value = this.original;
     } else {
       this.host.innerHTML = this.parts.body;
+      this._decoratePostEdit();
     }
     this.dirty = false;
     this.selectedImage = null;
