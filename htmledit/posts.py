@@ -266,16 +266,54 @@ def _article_source(article_inner: str) -> tuple[str, str]:
     return title.strip(), body.strip()
 
 
-def _snippet_parts(body_html: str) -> tuple[str, bool]:
-    """本文から最初の 3 行 (最大 100 文字程度) のスニペットを取り出す."""
-    lines = [line for line in _plain_text(body_html or "").split("\n") if line]
-    multiple_images = len(re.findall(r"<img\b", body_html or "", re.I)) > 1
-    if not lines:
-        return "", multiple_images
-    kept = []
+# コードブロック (pre.site-code-block)。一覧のスニペットでも <pre> のまま保持する。
+_CODE_BLOCK_RE = re.compile(
+    r'<pre\b(?=[^>]*class\s*=\s*["\'][^"\']*site-code-block[^"\']*["\'])[^>]*>([\s\S]*?)</pre\s*>',
+    re.I,
+)
+
+
+def _code_text(inner: str) -> str:
+    """<pre> の中身からコード文字列を取り出す."""
+    text = re.sub(r"<br\s*/?\s*>", "\n", inner or "", flags=re.I)
+    text = re.sub(r"<[^>]+>", "", text)
+    return "\n".join(line.rstrip() for line in html.unescape(text).split("\n")).strip("\n")
+
+
+def _snippet_parts(body_html: str) -> tuple[list, bool]:
+    """本文から最初の 3 行 (最大 100 文字程度) のスニペットを取り出す.
+
+    戻り値は (チャンク, 切り詰めたか)。チャンクは ("p", 行リスト) か
+    ("code", コード行リスト)。コードブロック (pre.site-code-block) は一覧でも
+    <pre> のまま表示してコピーボタンを効かせる。
+    """
+    source = body_html or ""
+    items = []  # [("p" | "code", 行テキスト)]
+
+    def push_text(segment: str) -> None:
+        for line in _plain_text(segment).split("\n"):
+            if line:
+                items.append(("p", line))
+
+    def push_code(inner: str) -> None:
+        for line in _code_text(inner).split("\n"):
+            if line.strip():
+                items.append(("code", line))
+
+    position = 0
+    for match in _CODE_BLOCK_RE.finditer(source):
+        if match.start() > position:
+            push_text(source[position : match.start()])
+        push_code(match.group(1))
+        position = match.end()
+    if position < len(source):
+        push_text(source[position:])
+
+    multiple_images = len(re.findall(r"<img\b", source, re.I)) > 1
+    kept = []  # [kind と行]
     total = 0
     truncated = False
-    for index, line in enumerate(lines):
+    for index, (kind, line) in enumerate(items):
         if len(kept) >= SNIPPET_MAX_LINES:
             truncated = True
             break
@@ -283,19 +321,26 @@ def _snippet_parts(body_html: str) -> tuple[str, bool]:
             truncated = True
             break
         if not kept and len(line) > SNIPPET_MAX_CHARS:
-            kept.append(line[: SNIPPET_MAX_CHARS - 1] + "…")
+            kept.append((kind, line[: SNIPPET_MAX_CHARS - 1] + "…"))
             truncated = True
             break
-        kept.append(line)
+        kept.append((kind, line))
         total += len(line) + 1
-        if len(kept) >= SNIPPET_MAX_LINES and index < len(lines) - 1:
+        if len(kept) >= SNIPPET_MAX_LINES and index < len(items) - 1:
             truncated = True
             break
-    if not truncated and len(lines) > len(kept):
+    if not truncated and len(items) > len(kept):
         truncated = True
     if multiple_images:
         truncated = True
-    return "<br />\n  ".join(html.escape(line) for line in kept), truncated
+
+    chunks = []
+    for kind, line in kept:
+        if chunks and chunks[-1][0] == kind:
+            chunks[-1][1].append(line)
+        else:
+            chunks.append((kind, [line]))
+    return chunks, truncated
 
 
 def _timestamp_text(post_id: str) -> str:
@@ -400,19 +445,25 @@ def _post_page_relpath(post_id: str) -> str:
 # --------------------------------------------------------------------------
 
 def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: bool, with_divider: bool, link: str, thumb_src: str = "", tags: str = "") -> str:
-    snippet, truncated = _snippet_parts(body_html)
+    chunks, truncated = _snippet_parts(body_html)
     # タイトルは青字・下線にしない (シンプルに本文色で)
     lines = []
     if thumb_src:
         lines.append(f'<p style="text-align: right; margin: 0 0 8px;"><img src="{thumb_src}" alt="" style="{_THUMB_STYLE}" /></p>')
     lines.append(f'<h2><a href="{link}" style="{_TITLE_LINK_STYLE}">{html.escape(title or "無題")}</a></h2>')
-    if snippet:
-        if truncated:
-            lines.append(f'<p>{snippet}<a href="{link}" style="{_READ_MORE_STYLE}">続きを読む</a></p>')
+    read_more_link = f'<a href="{link}" style="{_READ_MORE_STYLE}">続きを読む</a>'
+    rendered = []
+    for kind, chunk_lines in chunks:
+        if kind == "code":
+            rendered.append('<pre class="site-code-block">' + html.escape("\n".join(chunk_lines)) + "</pre>")
         else:
-            lines.append(f'<p>{snippet}</p>')
-    elif truncated:
-        lines.append(f'<p><a href="{link}" style="{_READ_MORE_STYLE}">続きを読む</a></p>')
+            rendered.append("<p>" + "<br />\n  ".join(html.escape(line) for line in chunk_lines) + "</p>")
+    if truncated:
+        if rendered and rendered[-1].startswith("<p>"):
+            rendered[-1] = rendered[-1].replace("</p>", read_more_link + "</p>")
+        else:
+            rendered.append(f"<p>{read_more_link}</p>")
+    lines.extend(rendered)
     if with_timestamp:
         stamp = _stamp_text(post_id, tags)
         if stamp:

@@ -815,6 +815,11 @@ class ApiTestCase(unittest.TestCase):
         self.assertIn('id="site-code-copy-script"', post22)
         index = (repo / "public/index.html").read_text("utf-8")
         self.assertIn('id="site-code-copy-script"', index)
+        # 一覧のスニペットでもコードブロックは <pre> のまま表示される (コピーできる)
+        self.assertIn(
+            '<pre class="site-code-block">print(&quot;hello&quot;)</pre>',
+            index,
+        )
 
         self.request("DELETE", f"/api/sites/{site_id}", {})
 
