@@ -1658,7 +1658,7 @@
 
   /* 幅・高さ・色の指定を既存 html の style ブロックから読み取る */
   function readDeclaration(ruleBody, property) {
-    var re = new RegExp("(?:^|;[\\s]*)" + property + "\\s*:\\s*([^;}]+)", "i");
+    var re = new RegExp("(?:^|;)\\s*" + property + "\\s*:\\s*([^;}]+)", "i");
     var m = re.exec(ruleBody);
     return m ? m[1].trim() : "";
   }
