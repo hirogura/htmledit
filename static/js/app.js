@@ -3840,16 +3840,29 @@
       renderPostPhotoList();
       el.postPhotos.value = "";
     });
-    // 手書きパネル
+    // 手書きモーダル
     (function () {
       var canvas = el.handwritingCanvas;
       var ctx = canvas.getContext("2d");
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 6;
       ctx.lineCap = "round";
+      ctx.lineJoin = "round";
       ctx.strokeStyle = "#000";
-      Array.prototype.forEach.call(document.querySelectorAll("#handwriting-pane [data-color]"), function (btn) {
+      function updateActive(container, attr, value) {
+        Array.prototype.forEach.call(container.querySelectorAll("[" + attr + "]"), function (item) {
+          item.classList.toggle("is-active", item.getAttribute(attr) === value);
+        });
+      }
+      Array.prototype.forEach.call(document.querySelectorAll("#handwriting-dialog [data-color]"), function (btn) {
         btn.addEventListener("click", function () {
           ctx.strokeStyle = btn.getAttribute("data-color");
+          updateActive(btn.parentElement, "data-color", btn.getAttribute("data-color"));
+        });
+      });
+      Array.prototype.forEach.call(document.querySelectorAll("#handwriting-dialog [data-width]"), function (btn) {
+        btn.addEventListener("click", function () {
+          ctx.lineWidth = parseInt(btn.getAttribute("data-width"), 10) || 6;
+          updateActive(btn.parentElement, "data-width", btn.getAttribute("data-width"));
         });
       });
       var drawing = false;
@@ -3870,10 +3883,13 @@
       canvas.addEventListener("touchend", end);
       el.btnHandwritingOpen.addEventListener("click", function () {
         state.handwritingTarget = "post";
-        el.handwritingPane.classList.remove("is-hidden"); rebuildResizers();
+        el.handwritingDialog.showModal();
       });
       el.btnHandwritingClose.addEventListener("click", function () {
-        el.handwritingPane.classList.add("is-hidden"); rebuildResizers();
+        el.handwritingDialog.close();
+      });
+      el.btnHandwritingCancel.addEventListener("click", function () {
+        el.handwritingDialog.close();
       });
       el.btnHandwritingClear.addEventListener("click", function () {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -3885,7 +3901,7 @@
             var reader = new FileReader();
             reader.onload = function () {
               editor.insertImage(reader.result, "handwriting.png");
-              el.handwritingPane.classList.add("is-hidden"); rebuildResizers();
+              el.handwritingDialog.close();
               toast("手書き画像を挿入しました", "success");
             };
             reader.readAsDataURL(blob);
@@ -3894,7 +3910,7 @@
           var file = new File([blob], "handwriting.png", { type: "image/png" });
           state.postPhotos = (state.postPhotos || []).concat([file]);
           renderPostPhotoList();
-          el.handwritingPane.classList.add("is-hidden"); rebuildResizers();
+          el.handwritingDialog.close();
           toast("手書き画像を添付しました", "success");
         }, "image/png");
       });
@@ -4048,10 +4064,11 @@
     el.postPhotos = $("post-photos");
     el.postPhotoList = $("post-photo-list");
     el.postTags = $("post-tags");
-    el.handwritingPane = $("handwriting-pane");
+    el.handwritingDialog = $("handwriting-dialog");
     el.handwritingCanvas = $("handwriting-canvas");
     el.btnHandwritingOpen = $("btn-handwriting-open");
     el.btnHandwritingClose = $("btn-handwriting-close");
+    el.btnHandwritingCancel = $("btn-handwriting-cancel");
     el.btnHandwritingClear = $("btn-handwriting-clear");
     el.btnHandwritingSave = $("btn-handwriting-save");
     el.postMaxSide = $("post-max-side");
@@ -4088,7 +4105,7 @@
       },
       onHandwriting: function () {
         state.handwritingTarget = "editor";
-        el.handwritingPane.classList.remove("is-hidden"); rebuildResizers();
+        el.handwritingDialog.showModal();
       }
     });
 

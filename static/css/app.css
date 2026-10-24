@@ -854,6 +854,89 @@ textarea.input {
   gap: 8px;
 }
 
+/* 手書きモーダル */
+.handwriting-dialog {
+  width: min(820px, 96vw);
+}
+
+.handwriting-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.handwriting-header .dialog-title {
+  margin: 0;
+}
+
+.handwriting-canvas {
+  display: block;
+  border: 1px solid #ccc;
+  background: #fff;
+  touch-action: none;
+  width: 760px;
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+.handwriting-tools {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.hw-colors,
+.hw-widths {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hw-color-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.hw-color-btn.is-active {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.hw-width-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.hw-width-btn.is-active {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.hw-width-dot {
+  display: block;
+  border-radius: 50%;
+  background: var(--text);
+}
+
+.handwriting-actions {
+  margin-top: 12px;
+}
+
 .post-photo-list {
   display: flex;
   flex-direction: column;
