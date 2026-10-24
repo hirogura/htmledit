@@ -781,6 +781,31 @@ class ApiTestCase(unittest.TestCase):
         self.assertNotIn("記事 21 (修正)", index)
         self.assertFalse((repo / "public/page/2.html").exists())
 
+        # ヘッダー (topbar) にロゴ画像を設定した場合、個別ページでも
+        # 相対パスが .. の連鎖付きに補正されて表示できる
+        index_html = (repo / "public/index.html").read_text("utf-8")
+        logo_html = (
+            '<header class="site-topbar">'
+            '<a href="index.html" style="color: inherit; text-decoration: none;">'
+            '<img class="site-logo" src="images/logo.png" alt="サイトロゴ" style="max-height: 40px;">'
+            "</a></header>"
+        )
+        status, payload = self.request(
+            "PUT",
+            f"/api/sites/{site_id}/file",
+            {"path": "public/index.html", "content": index_html.replace("<body>\n", "<body>\n" + logo_html + "\n", 1)},
+        )
+        self.assertEqual(status, 200, payload)
+        status, payload = self.request(
+            "POST",
+            f"/api/sites/{site_id}/posts",
+            {"id": "20261023-000022", "title": "記事 22", "bodyHtml": "<p>ロゴ確認用の本文</p>\n"},
+        )
+        self.assertEqual(status, 200, payload)
+        post22 = (repo / "public/posts/2026/10/23/20261023-000022.html").read_text("utf-8")
+        self.assertIn('<img class="site-logo" src="../../../../images/logo.png"', post22)
+        self.assertIn('href="../../../../index.html"', post22)
+
         self.request("DELETE", f"/api/sites/{site_id}", {})
 
 

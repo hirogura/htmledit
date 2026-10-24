@@ -349,9 +349,12 @@ def _post_article(post_id: str, title: str, body_html: str, with_timestamp: bool
 def _adjust_relative_hrefs(doc: str, depth: int = 1) -> str:
     """個別ページ (posts/YYYY/MM/DD/) 内の相対リンクを .. の連鎖付きに補正する.
 
-    depth = 個別ページの public/ 内でのディレクトリの深さ (posts/ID.html なら 1)
+    対象は <a> / <link> の href と <img> の src (サイトロゴなどヘッダー画像も
+    個別ページの階層で参照できるように)。depth = 個別ページの public/ 内での
+    ディレクトリの深さ (posts/ID.html なら 1)。script/style の中身は触らない。
     """
-    pattern = re.compile(r'(<(?:a|link)\b[^>]*\bhref\s*=\s*)(["\'])([^"\']+?)\2', re.I)
+    pattern = re.compile(r'(<(?:a|link)\b[^>]*\bhref\s*=\s*|<img\b[^>]*\bsrc\s*=\s*)(["\'])([^"\']+?)\2', re.I)
+    mask_re = re.compile(r"<(script|style)\b[\s\S]*?</\1\s*>", re.I)
 
     def replace(match) -> str:
         quote, value = match.group(2), match.group(3)
@@ -366,7 +369,14 @@ def _adjust_relative_hrefs(doc: str, depth: int = 1) -> str:
             return match.group(0)
         return match.group(1) + quote + "../" * depth + value + quote
 
-    return pattern.sub(replace, doc)
+    parts = []
+    last = 0
+    for mask in mask_re.finditer(doc):
+        parts.append(pattern.sub(replace, doc[last : mask.start()]))
+        parts.append(mask.group(0))
+        last = mask.end()
+    parts.append(pattern.sub(replace, doc[last:]))
+    return "".join(parts)
 
 
 def _replace_title(doc: str, page_title: str) -> str:
