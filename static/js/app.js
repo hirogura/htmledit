@@ -3640,6 +3640,7 @@
       state.opencodeStarted = false;
       terminalPanel.kill();
     }
+    rebuildResizers();
   }
 
   /* opencode パネルを閉じる (opencode のプロセスも終了する) */
@@ -3653,10 +3654,50 @@
   /* ------------------------------------------------------------------ */
   var editor = null;
 
-  function setupResizers() {
+  var resizers = { workspace: null };
+
+  function visibleWorkspacePanes() {
+    return Array.prototype.filter.call(resizers.workspace.children, function (node) {
+      return node.classList.contains("pane") && !node.classList.contains("is-hidden");
+    });
+  }
+
+  /* 区切りがリサイズする対象のパネルを求める。
+     右隣がエディターなら左のパネル、左隣なら右のパネル、
+     どちらでもなければ右隣のパネルを対象にする。 */
+  function resizerTarget(resizer) {
+    var node;
+    var left = null;
+    var right = null;
+    node = resizer.previousElementSibling;
+    while (node) {
+      if (node.classList.contains("pane") && !node.classList.contains("is-hidden")) {
+        left = node;
+        break;
+      }
+      node = node.previousElementSibling;
+    }
+    node = resizer.nextElementSibling;
+    while (node) {
+      if (node.classList.contains("pane") && !node.classList.contains("is-hidden")) {
+        right = node;
+        break;
+      }
+      node = node.nextElementSibling;
+    }
+    if (right && right.classList.contains("editor-pane")) return left;
+    if (left && left.classList.contains("editor-pane")) return right;
+    return right || left;
+  }
+
+  function rebuildResizers() {
     var workspace = el.workspace;
     if (!workspace) return;
-    var panes = Array.prototype.slice.call(workspace.querySelectorAll(":scope > .pane"));
+    resizers.workspace = workspace;
+    Array.prototype.forEach.call(workspace.querySelectorAll(":scope > .resizer"), function (node) {
+      node.remove();
+    });
+    var panes = visibleWorkspacePanes();
     panes.forEach(function (pane, index) {
       if (index === panes.length - 1) return;
       var resizer = document.createElement("div");
@@ -3665,21 +3706,28 @@
       var dragging = false;
       var startX = 0;
       var startW = 0;
+      var target = null;
       resizer.addEventListener("mousedown", function (e) {
+        target = resizerTarget(resizer);
+        if (!target) return;
         dragging = true;
         startX = e.clientX;
-        startW = pane.getBoundingClientRect().width;
+        startW = target.getBoundingClientRect().width;
         e.preventDefault();
       });
       document.addEventListener("mousemove", function (e) {
         if (!dragging) return;
         var newW = Math.max(120, startW + (e.clientX - startX));
-        pane.style.width = newW + "px";
+        target.style.width = newW + "px";
       });
       document.addEventListener("mouseup", function () {
         dragging = false;
       });
     });
+  }
+
+  function setupResizers() {
+    rebuildResizers();
   }
   function bindEvents() {
     el.btnAddSite.addEventListener("click", openSiteDialog);
@@ -3815,10 +3863,10 @@
       canvas.addEventListener("touchend", end);
       el.btnHandwritingOpen.addEventListener("click", function () {
         state.handwritingTarget = "post";
-        el.handwritingPane.classList.remove("is-hidden");
+        el.handwritingPane.classList.remove("is-hidden"); rebuildResizers();
       });
       el.btnHandwritingClose.addEventListener("click", function () {
-        el.handwritingPane.classList.add("is-hidden");
+        el.handwritingPane.classList.add("is-hidden"); rebuildResizers();
       });
       el.btnHandwritingClear.addEventListener("click", function () {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -3830,7 +3878,7 @@
             var reader = new FileReader();
             reader.onload = function () {
               editor.insertImage(reader.result, "handwriting.png");
-              el.handwritingPane.classList.add("is-hidden");
+              el.handwritingPane.classList.add("is-hidden"); rebuildResizers();
               toast("手書き画像を挿入しました", "success");
             };
             reader.readAsDataURL(blob);
@@ -3839,7 +3887,7 @@
           var file = new File([blob], "handwriting.png", { type: "image/png" });
           state.postPhotos = (state.postPhotos || []).concat([file]);
           renderPostPhotoList();
-          el.handwritingPane.classList.add("is-hidden");
+          el.handwritingPane.classList.add("is-hidden"); rebuildResizers();
           toast("手書き画像を添付しました", "success");
         }, "image/png");
       });
@@ -4033,7 +4081,7 @@
       },
       onHandwriting: function () {
         state.handwritingTarget = "editor";
-        el.handwritingPane.classList.remove("is-hidden");
+        el.handwritingPane.classList.remove("is-hidden"); rebuildResizers();
       }
     });
 
