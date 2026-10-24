@@ -1455,8 +1455,8 @@
       logo: (settings.logo || "").trim()
     };
     var menuHtml = buildTopbarHtml(settings.items, brand, settings.addSearch);
-    var headerWidth = normalizeCssMeasure(settings.headerWidth, "800px");
-    var bodyWidth = normalizeCssMeasure(settings.bodyWidth, "800px");
+    var headerWidth = normalizeCssMeasure(settings.headerWidth, "760px");
+    var bodyWidth = normalizeCssMeasure(settings.bodyWidth, "760px");
     var headerHeight = normalizeCssHeight(settings.headerHeight, "");
     var headerColor = normalizeCssColor(settings.headerColor, "");
     var iconLink = settings.icon
