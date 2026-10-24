@@ -1130,6 +1130,22 @@ textarea.input {
   color: var(--accent);
 }
 
+.wysiwyg-host pre.site-code-block {
+  position: relative;
+  box-sizing: border-box;
+  padding: 10px 96px 10px 12px;
+  margin: 10px 0;
+  background: #f6f7f8;
+  border: 1px dashed #c9d1d9;
+  border-radius: 8px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.9em;
+  line-height: 1.55;
+}
+
 .wysiwyg-host.is-link-selected a.is-selected,
 .wysiwyg-host.is-image-selected img.is-selected {
   outline: 2px solid var(--accent);

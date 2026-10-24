@@ -128,6 +128,16 @@
         )
       },
       {
+        label: "</>",
+        title: "コードブロック (選択した文章を囲む)",
+        command: "insertCodeBlock",
+        icon: flatIcon(
+          '<path d="M5.4 4.5 2.2 8l3.2 3.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
+            '<path d="M10.6 4.5 13.8 8l-3.2 3.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
+            '<path d="M9.3 3.4 6.7 12.6" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/>'
+        )
+      },
+      {
         label: "⌫",
         title: "書式を消去",
         command: "removeFormat",
@@ -268,6 +278,10 @@
           }
           if (item.command === "handwriting" && self.onHandwriting) {
             self.onHandwriting();
+            return;
+          }
+          if (item.command === "insertCodeBlock") {
+            self.insertCodeBlock();
             return;
           }
           if (item.command === "setElementId") {
@@ -635,6 +649,121 @@
     );
   };
 
+  function escapeCodeText(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  /* 「コードブロック」ボタン: 選択範囲を挟む形で pre.site-code-block を挿入する */
+  Editor.prototype.insertCodeBlock = function () {
+    if (this.mode !== "wysiwyg") {
+      this.setMode("wysiwyg");
+    }
+    this.restoreSelection();
+    var selection = window.getSelection();
+    var selected = selection && selection.rangeCount > 0 ? selection.toString() : "";
+    var before = this.host.querySelectorAll("pre.site-code-block");
+    var markup =
+      '<pre class="site-code-block">' + escapeCodeText(selected || "コード") + "</pre>";
+    this.insertHtmlAtCaret(markup);
+
+    var pool = this.host.querySelectorAll("pre.site-code-block");
+    var inserted = null;
+    for (var i = pool.length - 1; i >= 0; i--) {
+      if (before.length === 0 || Array.prototype.indexOf.call(before, pool[i]) === -1) {
+        inserted = pool[i];
+        break;
+      }
+    }
+    if (!inserted) {
+      return;
+    }
+    /* 選択なしだった場合はプレースホルダーの末尾にキャレットを置く */
+    if (!selected) {
+      var range = document.createRange();
+      range.selectNodeContents(inserted);
+      range.collapse(false);
+      var next = window.getSelection();
+      if (next) {
+        next.removeAllRanges();
+        next.addRange(range);
+      }
+    }
+    this.saveSelection();
+    this.updateSelectionClasses();
+  };
+
+  /* コードブロックのコピーボタン環境 (公開ページは posts.py 側で注入する。内容を合わせること) */
+  var CODE_COPY_MARKUP =
+    '<style id="site-code-copy-style">\n' +
+    "pre.site-code-block { position: relative; box-sizing: border-box; padding: 12px 96px 12px 14px; margin: 12px 0; background: #f6f7f8; border: 1px solid #e3e6ea; border-radius: 8px; overflow-x: auto; white-space: pre; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 0.9em; line-height: 1.55; }\n" +
+    ".site-code-copy { position: absolute; top: 6px; right: 6px; padding: 5px 10px; border: 1px solid #d3d8de; border-radius: 6px; background: #ffffff; color: #5a6570; font-size: 12px; line-height: 1; cursor: pointer; }\n" +
+    ".site-code-copy:hover { background: #eef1f4; }\n" +
+    ".site-code-copy:disabled { opacity: 0.75; cursor: default; }\n" +
+    "</style>\n" +
+    '<script id="site-code-copy-script">\n' +
+    '(function () {\n' +
+    '  "use strict";\n' +
+    "  function copyText(text) {\n" +
+    "    if (navigator.clipboard && navigator.clipboard.writeText) {\n" +
+    "      navigator.clipboard.writeText(text).catch(function () { fallbackCopy(text); });\n" +
+    "      return;\n" +
+    "    }\n" +
+    "    fallbackCopy(text);\n" +
+    "  }\n" +
+    "  function fallbackCopy(text) {\n" +
+    '    var area = document.createElement("textarea");\n' +
+    "    area.value = text;\n" +
+    '    area.style.position = "fixed";\n' +
+    '    area.style.opacity = "0";\n' +
+    "    document.body.appendChild(area);\n" +
+    "    area.select();\n" +
+    '    try { document.execCommand("copy"); } catch (error) { /* 無視 */ }\n' +
+    "    document.body.removeChild(area);\n" +
+    "  }\n" +
+    "  function init() {\n" +
+    '    var blocks = document.querySelectorAll("pre.site-code-block");\n' +
+    "    Array.prototype.forEach.call(blocks, function (pre) {\n" +
+    '      if (pre.getAttribute("data-code-copy") === "1") { return; }\n' +
+    '      pre.setAttribute("data-code-copy", "1");\n' +
+    "      var code = pre.textContent;\n" +
+    '      var btn = document.createElement("button");\n' +
+    '      btn.type = "button";\n' +
+    '      btn.className = "site-code-copy";\n' +
+    '      btn.textContent = "コピー";\n' +
+    '      btn.addEventListener("click", function () {\n' +
+    "        copyText(code);\n" +
+    '        btn.textContent = "コピーしました";\n' +
+    "        btn.disabled = true;\n" +
+    "        window.setTimeout(function () {\n" +
+    '          btn.textContent = "コピー";\n' +
+    "          btn.disabled = false;\n" +
+    "        }, 1600);\n" +
+    "      });\n" +
+    "      pre.appendChild(btn);\n" +
+    "    });\n" +
+    "  }\n" +
+    '  if (document.readyState === "loading") {\n' +
+    '    document.addEventListener("DOMContentLoaded", init);\n' +
+    "  } else {\n" +
+    "    init();\n" +
+    "  }\n" +
+    "})();\n" +
+    "</script>\n";
+
+  Editor.prototype.__ensureCodeCopy = function (html) {
+    if (!html || html.indexOf('id="site-code-copy-script"') >= 0) {
+      return html;
+    }
+    var close = html.search(/<\/body\s*>/i);
+    if (close < 0) {
+      return html;
+    }
+    return html.slice(0, close) + CODE_COPY_MARKUP + html.slice(close);
+  };
+
   /* 「ID を設定」ボタン: キャレット位置のブロック要素に id 属性を設定/解除する */
   Editor.prototype.setElementId = function () {
     if (this.mode !== "wysiwyg") {
@@ -807,7 +936,7 @@
     if (!this.previewVisible) {
       return;
     }
-    this.preview.srcdoc = this.currentText();
+    this.preview.srcdoc = this.__ensureCodeCopy(this.currentText());
   };
 
   Editor.prototype._markDirty = function () {

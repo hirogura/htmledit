@@ -799,12 +799,22 @@ class ApiTestCase(unittest.TestCase):
         status, payload = self.request(
             "POST",
             f"/api/sites/{site_id}/posts",
-            {"id": "20261023-000022", "title": "記事 22", "bodyHtml": "<p>ロゴ確認用の本文</p>\n"},
+            {
+                "id": "20261023-000022",
+                "title": "記事 22",
+                "bodyHtml": '<p>ロゴ・コードブロック確認用の本文</p>\n<pre class="site-code-block">print("hello")</pre>\n',
+            },
         )
         self.assertEqual(status, 200, payload)
         post22 = (repo / "public/posts/2026/10/23/20261023-000022.html").read_text("utf-8")
         self.assertIn('<img class="site-logo" src="../../../../images/logo.png"', post22)
         self.assertIn('href="../../../../index.html"', post22)
+        # コードブロックには公開ページ向けコピーボタン環境 (style + script) が注入される
+        self.assertIn('pre class="site-code-block"', post22)
+        self.assertIn('id="site-code-copy-style"', post22)
+        self.assertIn('id="site-code-copy-script"', post22)
+        index = (repo / "public/index.html").read_text("utf-8")
+        self.assertIn('id="site-code-copy-script"', index)
 
         self.request("DELETE", f"/api/sites/{site_id}", {})
 

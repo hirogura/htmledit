@@ -44,6 +44,104 @@ _NAV_STYLE = (
 _TITLE_RE = re.compile(r"<title\b[^>]*>[\s\S]*?</title\s*>", re.I)
 _STAMP_RE = re.compile(r"<p\b(?=[^>]*font-size)[^>]*>[\s\S]*?</p\s*>", re.I)
 _MANAGED_OPEN_RE = re.compile(r"<article\b(?=[^>]*\bdata-post-id\s*=)([^>]*)>", re.I)
+
+# コードブロック (pre.site-code-block) の右上にコピーボタンを付ける環境。
+# editor.js の CODE_COPY_STYLE / CODE_COPY_SCRIPT (プレビュー用) と内容を合わせること。
+_CODE_COPY_STYLE = '<style id="site-code-copy-style">\n' + "\n".join(
+    [
+        "    pre.site-code-block {",
+        "      position: relative;",
+        "      box-sizing: border-box;",
+        "      padding: 12px 96px 12px 14px;",
+        "      margin: 12px 0;",
+        "      background: #f6f7f8;",
+        "      border: 1px solid #e3e6ea;",
+        "      border-radius: 8px;",
+        "      overflow-x: auto;",
+        "      white-space: pre;",
+        "      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;",
+        "      font-size: 0.9em;",
+        "      line-height: 1.55;",
+        "    }",
+        "    .site-code-copy {",
+        "      position: absolute;",
+        "      top: 6px;",
+        "      right: 6px;",
+        "      padding: 5px 10px;",
+        "      border: 1px solid #d3d8de;",
+        "      border-radius: 6px;",
+        "      background: #ffffff;",
+        "      color: #5a6570;",
+        "      font-size: 12px;",
+        "      line-height: 1;",
+        "      cursor: pointer;",
+        "    }",
+        "    .site-code-copy:hover { background: #eef1f4; }",
+        "    .site-code-copy:disabled { opacity: 0.75; cursor: default; }",
+    ]
+) + "\n    </style>"
+_CODE_COPY_SCRIPT = (
+    '<script id="site-code-copy-script">\n'
+    '(function () {\n'
+    '  "use strict";\n'
+    '  function copyText(text) {\n'
+    '    if (navigator.clipboard && navigator.clipboard.writeText) {\n'
+    '      navigator.clipboard.writeText(text).catch(function () { fallbackCopy(text); });\n'
+    '      return;\n'
+    '    }\n'
+    '    fallbackCopy(text);\n'
+    '  }\n'
+    '  function fallbackCopy(text) {\n'
+    '    var area = document.createElement("textarea");\n'
+    '    area.value = text;\n'
+    '    area.style.position = "fixed";\n'
+    '    area.style.opacity = "0";\n'
+    '    document.body.appendChild(area);\n'
+    '    area.select();\n'
+    '    try { document.execCommand("copy"); } catch (error) { /* 無視 */ }\n'
+    '    document.body.removeChild(area);\n'
+    '  }\n'
+    '  function init() {\n'
+    '    var blocks = document.querySelectorAll("pre.site-code-block");\n'
+    '    Array.prototype.forEach.call(blocks, function (pre) {\n'
+    '      if (pre.getAttribute("data-code-copy") === "1") { return; }\n'
+    '      pre.setAttribute("data-code-copy", "1");\n'
+    '      var code = pre.textContent;\n'
+    '      var btn = document.createElement("button");\n'
+    '      btn.type = "button";\n'
+    '      btn.className = "site-code-copy";\n'
+    '      btn.textContent = "コピー";\n'
+    '      btn.addEventListener("click", function () {\n'
+    '        copyText(code);\n'
+    '        btn.textContent = "コピーしました";\n'
+    '        btn.disabled = true;\n'
+    '        window.setTimeout(function () {\n'
+    '          btn.textContent = "コピー";\n'
+    '          btn.disabled = false;\n'
+    '        }, 1600);\n'
+    '      });\n'
+    '      pre.appendChild(btn);\n'
+    '    });\n'
+    '  }\n'
+    '  if (document.readyState === "loading") {\n'
+    '    document.addEventListener("DOMContentLoaded", init);\n'
+    '  } else {\n'
+    '    init();\n'
+    '  }\n'
+    '})();\n'
+    '</script>'
+)
+_CODE_COPY_BLOCK = _CODE_COPY_STYLE + "\n" + _CODE_COPY_SCRIPT + "\n"
+
+
+def _ensure_code_copy(html: str) -> str:
+    """公開ページにコードブロックのコピーボタン環境が無ければ </body> 直前に注入する."""
+    if not html or 'id="site-code-copy-script"' in html:
+        return html
+    close = re.search(r"</body\s*>", html, re.I)
+    if not close:
+        return html
+    return html[: close.start()] + _CODE_COPY_BLOCK + html[close.start():]
 _MANAGED_ID_RE = re.compile(r'data-post-id\s*=\s*"([^"]*)"', re.I)
 
 _LOCK = threading.RLock()
@@ -611,7 +709,7 @@ def rebalance(site: Site) -> dict:
             # 一覧からのリンクは個別ページの実在位置 (posts/YYYY/MM/DD/*.html など) を使う
             rendered = [{"id": entry["id"], "inner": _snippet_for(entry, entry["file"] if on_index else "../" + entry["file"], on_index)} for entry in chunk]
             swapped = index_html[:open_end] + _list_inner(unmanaged, rendered, index + 1, total, on_index) + index_html[inner_end:]
-            sites.write_file(site, paths[index], swapped)
+            sites.write_file(site, paths[index], _ensure_code_copy(swapped))
 
         # 投稿が減って不要になった過去ログページを削除する
         pages_dir = root / "public" / "page"
@@ -656,7 +754,7 @@ def publish(
         )
         doc = _render_post_document(index_html, article_html, page_title, depth)
         post_path = f"public/{rel_page}"
-        sites.write_file(site, post_path, doc)
+        sites.write_file(site, post_path, _ensure_code_copy(doc))
         summary = rebalance(site)
         return {"ok": True, "post": post_path, **summary}
 
