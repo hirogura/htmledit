@@ -60,6 +60,8 @@
         { value: "h2", label: "見出し 2" },
         { value: "h3", label: "見出し 3" },
         { value: "blockquote", label: "引用" },
+        { value: "color:#d93025", label: "赤字" },
+        { value: "color:#1a73e8", label: "青字" },
         { value: "pre", label: "等幅" }
       ] }
     ],
@@ -249,7 +251,12 @@
             select.appendChild(opt);
           });
           select.addEventListener("change", function () {
-            self.execCommand("formatBlock", select.value);
+            var value = select.value;
+            if (value.indexOf("color:") === 0) {
+              self.applyTextColor(value.slice("color:".length));
+              return;
+            }
+            self.execCommand("formatBlock", value);
           });
           fragment.appendChild(select);
           return;
@@ -656,6 +663,39 @@
       .replace(/>/g, "&gt;");
   }
 
+  /* 「赤字」「青字」: 選択範囲の文字色を変える (execCommand が使えない場合は span で囲む) */
+  Editor.prototype.applyTextColor = function (color) {
+    if (this.mode !== "wysiwyg") {
+      this.setMode("wysiwyg");
+    }
+    this.restoreSelection();
+    try {
+      document.execCommand("styleWithCSS", false, true);
+    } catch (error) { /* 無視 */ }
+    var applied = false;
+    try {
+      if (document.queryCommandSupported && document.queryCommandSupported("foreColor")) {
+        applied = document.execCommand("foreColor", false, color);
+      }
+    } catch (error) {
+      applied = false;
+    }
+    if (!applied) {
+      var selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        var range = selection.getRangeAt(0);
+        try {
+          var span = document.createElement("span");
+          span.style.color = color;
+          span.appendChild(range.extractContents());
+          range.insertNode(span);
+        } catch (error) { /* 失敗しても編集は続行する */ }
+      }
+    }
+    this._markDirty();
+    this.updatePreview();
+  };
+
   /* 「コードブロック」ボタン: 選択範囲を挟む形で pre.site-code-block を挿入する */
   Editor.prototype.insertCodeBlock = function () {
     if (this.mode !== "wysiwyg") {
@@ -753,15 +793,27 @@
     "})();\n" +
     "</script>\n";
 
-  Editor.prototype.__ensureCodeCopy = function (html) {
-    if (!html || html.indexOf('id="site-code-copy-script"') >= 0) {
+  /* 引用 (blockquote) をブロックで囲むスタイル (公開ページは posts.py 側で注入。内容を合わせること) */
+  var QUOTE_STYLE_MARKUP =
+    '<style id="site-quote-style">\n' +
+    "blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #9aa7b4; background: #f4f6f8; color: #4a5560; border-radius: 0 8px 8px 0; }\n" +
+    "</style>\n";
+
+  function ensureInBody(html, marker, markup) {
+    if (!html || html.indexOf(marker) >= 0) {
       return html;
     }
     var close = html.search(/<\/body\s*>/i);
     if (close < 0) {
       return html;
     }
-    return html.slice(0, close) + CODE_COPY_MARKUP + html.slice(close);
+    return html.slice(0, close) + markup + html.slice(close);
+  }
+
+  Editor.prototype.__ensureCodeCopy = function (html) {
+    html = ensureInBody(html, 'id="site-code-copy-script"', CODE_COPY_MARKUP);
+    html = ensureInBody(html, 'id="site-quote-style"', QUOTE_STYLE_MARKUP);
+    return html;
   };
 
   /* 「ID を設定」ボタン: キャレット位置のブロック要素に id 属性を設定/解除する */

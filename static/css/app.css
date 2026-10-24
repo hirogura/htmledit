@@ -1146,6 +1146,15 @@ textarea.input {
   line-height: 1.55;
 }
 
+.wysiwyg-host blockquote {
+  margin: 10px 0;
+  padding: 10px 14px;
+  border-left: 4px solid #9aa7b4;
+  background: #f4f6f8;
+  color: #4a5560;
+  border-radius: 0 8px 8px 0;
+}
+
 .wysiwyg-host.is-link-selected a.is-selected,
 .wysiwyg-host.is-image-selected img.is-selected {
   outline: 2px solid var(--accent);

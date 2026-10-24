@@ -133,15 +133,41 @@ _CODE_COPY_SCRIPT = (
 )
 _CODE_COPY_BLOCK = _CODE_COPY_STYLE + "\n" + _CODE_COPY_SCRIPT + "\n"
 
+# 引用 (blockquote) を帯つきのブロックで表示する環境。
+# editor.js の QUOTE_STYLE_MARKUP (プレビュー用) と内容を合わせること。
+QUOTE_STYLE_MARKUP = (
+    '<style id="site-quote-style">\n'
+    "    blockquote {"
+    " margin: 12px 0; padding: 10px 14px; border-left: 4px solid #9aa7b4;"
+    " background: #f4f6f8; color: #4a5560; border-radius: 0 8px 8px 0;"
+    " }\n"
+    "    </style>"
+)
 
-def _ensure_code_copy(html: str) -> str:
-    """公開ページにコードブロックのコピーボタン環境が無ければ </body> 直前に注入する."""
-    if not html or 'id="site-code-copy-script"' in html:
-        return html
-    close = re.search(r"</body\s*>", html, re.I)
+
+def _ensure_in_body(html_text: str, marker: str, block: str) -> str:
+    """marker が無いページに </body> 直前で block を注入する."""
+    if not html_text or marker in html_text:
+        return html_text
+    close = re.search(r"</body\s*>", html_text, re.I)
     if not close:
-        return html
-    return html[: close.start()] + _CODE_COPY_BLOCK + html[close.start():]
+        return html_text
+    return html_text[: close.start()] + block + html_text[close.start():]
+
+
+def _ensure_code_copy(html_text: str) -> str:
+    """公開ページにコードブロックのコピーボタン環境が無ければ </body> 直前に注入する."""
+    return _ensure_in_body(html_text, 'id="site-code-copy-script"', _CODE_COPY_BLOCK)
+
+
+def _ensure_quote_style(html_text: str) -> str:
+    """公開ページに引用ブロックのスタイルが無ければ </body> 直前に注入する."""
+    return _ensure_in_body(html_text, 'id="site-quote-style"', QUOTE_STYLE_MARKUP)
+
+
+def _ensure_site_env(html_text: str) -> str:
+    """公開ページに付属環境 (コードコピー / 引用スタイル) を揃えて注入する."""
+    return _ensure_quote_style(_ensure_code_copy(html_text))
 _MANAGED_ID_RE = re.compile(r'data-post-id\s*=\s*"([^"]*)"', re.I)
 
 _LOCK = threading.RLock()
@@ -760,7 +786,7 @@ def rebalance(site: Site) -> dict:
             # 一覧からのリンクは個別ページの実在位置 (posts/YYYY/MM/DD/*.html など) を使う
             rendered = [{"id": entry["id"], "inner": _snippet_for(entry, entry["file"] if on_index else "../" + entry["file"], on_index)} for entry in chunk]
             swapped = index_html[:open_end] + _list_inner(unmanaged, rendered, index + 1, total, on_index) + index_html[inner_end:]
-            sites.write_file(site, paths[index], _ensure_code_copy(swapped))
+            sites.write_file(site, paths[index], _ensure_site_env(swapped))
 
         # 投稿が減って不要になった過去ログページを削除する
         pages_dir = root / "public" / "page"
@@ -805,7 +831,7 @@ def publish(
         )
         doc = _render_post_document(index_html, article_html, page_title, depth)
         post_path = f"public/{rel_page}"
-        sites.write_file(site, post_path, _ensure_code_copy(doc))
+        sites.write_file(site, post_path, _ensure_site_env(doc))
         summary = rebalance(site)
         return {"ok": True, "post": post_path, **summary}
 
