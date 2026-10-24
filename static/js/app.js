@@ -968,7 +968,8 @@
   /* 記事投稿 (public/index.html への挿入)                                */
   /* ------------------------------------------------------------------ */
   var POST_PAGE = "public/index.html";
-  var POST_DEFAULT_MAX_SIDE = 1024;
+  var POST_DEFAULT_MAX_SIDE = 760;
+  var EDITOR_IMAGE_MAX_SIDE_DEFAULT = 760;
   var RESIZABLE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
   function openPostPane() {
@@ -1007,8 +1008,7 @@
   }
 
   /* 長辺が maxSide を超える画像を canvas で縮小する (超えなければ元のまま) */
-  function postResizeImage(file, maxSide) {
-    if (!maxSide || RESIZABLE_TYPES.indexOf(file.type) < 0) {
+  function postResizeImage(file, maxSide) {    if (!maxSide || RESIZABLE_TYPES.indexOf(file.type) < 0) {
       return Promise.resolve(file);
     }
     return new Promise(function (resolve) {
@@ -1047,6 +1047,96 @@
       };
       image.src = url;
     });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* WYSIWYG ドロップ画像のリサイズ設定 (サイト設定 → meta タグ)           */
+  /* ------------------------------------------------------------------ */
+  function parseImageMaxSideInput(value) {
+    var text = (value || "").trim();
+    if (!text) {
+      return null;
+    }
+    var number = parseInt(text, 10);
+    if (isNaN(number)) {
+      return null;
+    }
+    if (number === 0) {
+      return 0; /* 無制限 (リサイズしない) */
+    }
+    if (number > 8192) {
+      return 8192;
+    }
+    return number < 64 ? null : number;
+  }
+
+  /* index.html の meta タグから設定値を読む。無ければ null (既定値扱い) */
+  function imageMaxSideFromHtml(html) {
+    var match = /<meta[^>]+name\s*=\s*["']?htmledit-image-max-side[^>]*>/i.exec(html || "");
+    if (!match) {
+      return null;
+    }
+    var content = /content\s*=\s*["']?(\d+)/i.exec(match[0]);
+    if (!content) {
+      return null;
+    }
+    var value = parseInt(content[1], 10);
+    if (!(value >= 0)) {
+      return null;
+    }
+    if (value > 0 && value < 64) {
+      return null;
+    }
+    return value > 8192 ? 8192 : value;
+  }
+
+  /* 適用時の meta タグの内容を反映する (空欄/無効値なら変更しない) */
+  function upsertImageMetaMarkup(html, value) {
+    if (value === null) {
+      return html;
+    }
+    var metaTag = '<meta name="htmledit-image-max-side" content="' + value + '" />';
+    var existing = /<meta[^>]+name\s*=\s*["']?htmledit-image-max-side[^>]*>/i;
+    if (existing.test(html)) {
+      return html.replace(existing, metaTag);
+    }
+    if (/<\/head\s*>/i.test(html)) {
+      return html.replace(/<\/head\s*>/i, "    " + metaTag + "\n$&");
+    }
+    if (/<head\b[^>]*>/i.test(html)) {
+      return html.replace(/<head\b[^>]*>/i, "$&\n    " + metaTag);
+    }
+    return html;
+  }
+
+  /* WYSIWYG ドロップ時に使う長辺上限。現在の編集内容 → サイト別キャッシュ → 既定値の順 */
+  var imageMaxSideCache = { siteId: null, value: null };
+
+  function currentImageMaxSide() {
+    if (state.path === POST_PAGE) {
+      var fromEditor = imageMaxSideFromHtml(editor.currentText());
+      if (fromEditor !== null) {
+        return Promise.resolve(fromEditor);
+      }
+    }
+    if (imageMaxSideCache.siteId === state.siteId && imageMaxSideCache.value !== null) {
+      return Promise.resolve(imageMaxSideCache.value);
+    }
+    return api(
+      "/api/sites/" + encodeURIComponent(state.siteId) + "/file?path=" + encodeURIComponent(POST_PAGE)
+    )
+      .then(function (payload) {
+        var value = imageMaxSideFromHtml(payload.content || "");
+        value = value === null ? EDITOR_IMAGE_MAX_SIDE_DEFAULT : value;
+        imageMaxSideCache = { siteId: state.siteId, value: value };
+        return value;
+      })
+      .catch(function () {
+        if (imageMaxSideCache.siteId === state.siteId && imageMaxSideCache.value !== null) {
+          return imageMaxSideCache.value;
+        }
+        return EDITOR_IMAGE_MAX_SIDE_DEFAULT;
+      });
   }
 
   function postUploadImage(siteId, file, page) {
@@ -1459,6 +1549,12 @@
     var bodyWidth = normalizeCssMeasure(settings.bodyWidth, "760px");
     var headerHeight = normalizeCssHeight(settings.headerHeight, "");
     var headerColor = normalizeCssColor(settings.headerColor, "");
+    /* ドロップ画像のリサイズ設定 (空欄/無効値は既定の 760px) */
+    var imageMaxSide = parseImageMaxSideInput(settings.imageWidth);
+    if (imageMaxSide === null) {
+      imageMaxSide = EDITOR_IMAGE_MAX_SIDE_DEFAULT;
+    }
+    var imageMeta = '<meta name="htmledit-image-max-side" content="' + imageMaxSide + '" />';
     var iconLink = settings.icon
       ? '\n    <link rel="icon" href="' + escapeHtml(settings.icon) + '" />'
       : "";
@@ -1527,6 +1623,7 @@
       '    <meta charset="utf-8" />',
       '    <meta name="viewport" content="width=device-width, initial-scale=1" />',
       "    <title>" + escapeHtml(title) + "</title>" + iconLink,
+      "    " + imageMeta,
       "    <style>",
       css,
       "    </style>",
@@ -2029,6 +2126,8 @@
       });
     }
     output = applyLayoutWidths(output, settings);
+    /* ドロップ画像のリサイズ設定 (空欄 / 無効値なら既存の meta を残す) */
+    output = upsertImageMetaMarkup(output, parseImageMaxSideInput(settings.imageWidth));
     /* 検索ボックススクリプトを張り替える (チェックが外れたら除去) */
     output = output.replace(siteSearchScriptPattern(), "");
     if (settings.addSearch) {
@@ -2277,6 +2376,7 @@
     el.settingsIcon.value = "favicon.svg";
     el.settingsHeaderWidth.value = "";
     el.settingsBodyWidth.value = "";
+    el.settingsImageWidth.value = "";
     el.settingsHeaderHeight.value = "";
     el.settingsHeaderColor.value = "#ffffff";
     el.settingsLogo.value = "";
@@ -2320,6 +2420,10 @@
         if (widths.bodyWidth) {
           el.settingsBodyWidth.value = widths.bodyWidth;
         }
+        var imageSide = imageMaxSideFromHtml(html);
+        if (imageSide !== null) {
+          el.settingsImageWidth.value = String(imageSide);
+        }
         if (widths.headerHeight) {
           el.settingsHeaderHeight.value = widths.headerHeight;
         }
@@ -2361,6 +2465,7 @@
       icon: normalizeIconReference(el.settingsIcon.value),
       headerWidth: el.settingsHeaderWidth.value.trim(),
       bodyWidth: el.settingsBodyWidth.value.trim(),
+      imageWidth: el.settingsImageWidth.value.trim(),
       headerHeight: el.settingsHeaderHeight.value.trim(),
       headerColor: el.settingsHeaderColor.value.trim(),
       logo: normalizeIconReference(el.settingsLogo.value),
@@ -3269,44 +3374,54 @@
       toast("画像ファイルのみドロップできます: " + file.name, "warn");
       return;
     }
-    var reader = new FileReader();
-    reader.onload = function () {
-      var query =
-        "?name=" + encodeURIComponent(file.name) + "&page=" + encodeURIComponent(state.path || "");
-      fetch("/api/sites/" + encodeURIComponent(state.siteId) + "/assets/upload" + query, {
-        method: "POST",
-        headers: { "Content-Type": file.type, "X-Requested-With": "htmledit" },
-        credentials: "same-origin",
-        body: new Uint8Array(reader.result)
+    currentImageMaxSide()
+      .then(function (maxSide) {
+        return postResizeImage(file, maxSide);
       })
-        .then(function (response) {
-          return response.json().catch(function () {
-            return {};
-          }).then(function (payload) {
-            if (!response.ok) {
-              throw new Error(payload.error || "アップロードに失敗しました");
+      .then(function (prepared) {
+        var source = prepared || file;
+        var reader = new FileReader();
+        reader.onload = function () {
+          var query =
+            "?name=" + encodeURIComponent(source.name) + "&page=" + encodeURIComponent(state.path || "");
+          fetch(
+            "/api/sites/" + encodeURIComponent(state.siteId) + "/assets/upload" + query,
+            {
+              method: "POST",
+              headers: { "Content-Type": source.type, "X-Requested-With": "htmledit" },
+              credentials: "same-origin",
+              body: new Uint8Array(reader.result)
             }
-            return payload;
-          });
-        })
-        .then(function (payload) {
-          editor.insertImage(payload.reference, file.name);
-           editor.insertHtmlAtCaret("<br>");
-          toast("画像を保存しました: " + payload.path, "success");
-          if (payload.ignored) {
-            toast("警告: " + payload.path + " は .gitignore によりコミットされません。", "warn");
-          }
-          invalidateAssetImages();
-          refreshTree();
-        })
-        .catch(function (error) {
-          toast("画像のアップロードに失敗しました: " + error.message, "error");
-        });
-    };
-    reader.onerror = function () {
-      toast("画像を読み込めませんでした: " + file.name, "error");
-    };
-    reader.readAsArrayBuffer(file);
+          )
+            .then(function (response) {
+              return response.json().catch(function () {
+                return {};
+              }).then(function (payload) {
+                if (!response.ok) {
+                  throw new Error(payload.error || "アップロードに失敗しました");
+                }
+                return payload;
+              });
+            })
+            .then(function (payload) {
+              editor.insertImage(payload.reference, source.name);
+              editor.insertHtmlAtCaret("<br>");
+              toast("画像を保存しました: " + payload.path, "success");
+              if (payload.ignored) {
+                toast("警告: " + payload.path + " は .gitignore によりコミットされません。", "warn");
+              }
+              invalidateAssetImages();
+              refreshTree();
+            })
+            .catch(function (error) {
+              toast("画像のアップロードに失敗しました: " + error.message, "error");
+            });
+        };
+        reader.onerror = function () {
+          toast("画像を読み込めませんでした: " + source.name, "error");
+        };
+        reader.readAsArrayBuffer(source);
+      });
   }
 
   /* ------------------------------------------------------------------ */
@@ -3829,6 +3944,7 @@
     el.settingsIcon = $("settings-icon");
     el.settingsHeaderWidth = $("settings-header-width");
     el.settingsBodyWidth = $("settings-body-width");
+    el.settingsImageWidth = $("settings-image-width");
     el.settingsMenuRows = $("settings-menu-rows");
     el.settingsAddSearch = $("settings-add-search");
     el.btnSettingsMenuAdd = $("btn-settings-menu-add");

@@ -13,7 +13,7 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.3.3.4</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.3.4.0</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
@@ -72,7 +72,7 @@
           <button type="button" class="btn btn-ghost btn-sm" id="btn-handwriting-open" style="margin-bottom:8px;">手書きを追加</button>
           <label class="field">
             <span class="field-label">画像の長辺最大幅 (px)</span>
-            <input class="input" type="number" id="post-max-side" min="64" max="8192" step="1" value="1024" />
+            <input class="input" type="number" id="post-max-side" min="64" max="8192" step="1" value="760" />
             <p class="field-hint">この幅を超える画像は自動でリサイズして保存します。</p>
           </label>
           <label class="field">
@@ -330,6 +330,15 @@
             <p class="field-hint">
               本文コンテナ (container) の最大幅。パーセント (%) か固定値 (px など) で指定します。
               空欄なら既定値の 760px (サンプル生成時) を使います。
+            </p>
+          </label>
+          <label class="field">
+            <span class="field-label">画像の長辺最大幅 (px)</span>
+            <input class="input" type="number" id="settings-image-width" min="0" max="8192" step="1" placeholder="760 (既定)" />
+            <p class="field-hint">
+              WYSIWYG 編集画面にドロップした画像の長辺がこのサイズを超えると、
+              このサイズに自動でリサイズします。0 を指定するとリサイズしません。
+              空欄なら既定値の 760px を使います。
             </p>
           </label>
           <label class="field">
