@@ -376,6 +376,8 @@
             }
             self.execCommand("formatBlock", value);
           });
+          /* キャレット位置の段落スタイルを表示する (適用済みの見出しでも他の場所で再適用できるように) */
+          this.blockSelect = select;
           fragment.appendChild(select);
           return;
         }
@@ -438,6 +440,18 @@
     this.host.addEventListener("keyup", function () {
       self.saveSelection();
       self.reportSelection();
+    });
+    /* 見出し / 引用の途中で Enter を押したら、次の段落は本文 (<p>) に戻す */
+    this.host.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter" || event.shiftKey) {
+        return;
+      }
+      if (event.isComposing) {
+        return;
+      }
+      window.setTimeout(function () {
+        self._returnToParagraphAfterEnter();
+      }, 0);
     });
     this.host.addEventListener("mouseup", function () {
       self.saveSelection();
@@ -531,9 +545,78 @@
       text: this.selectedText()
     };
     this.updateSelectionClasses();
+    this.updateBlockSelect();
     if (this.onSelection) {
       this.onSelection(info);
     }
+  };
+
+  /* 段落スタイルのセレクトをキャレット位置のブロック要素に合わせる */
+  Editor.prototype.updateBlockSelect = function () {
+    if (!this.blockSelect) {
+      return;
+    }
+    if (this.mode !== "wysiwyg") {
+      return;
+    }
+    var block = this.currentBlockElement();
+    if (!block) {
+      return;
+    }
+    var tag = block.nodeName.toLowerCase();
+    var values = ["p", "h1", "h2", "h3", "blockquote", "pre"];
+    if (values.indexOf(tag) >= 0) {
+      this.blockSelect.value = tag;
+    }
+  };
+
+  Editor.prototype.currentBlockElement = function () {
+    var selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      return null;
+    }
+    var range = selection.getRangeAt(0);
+    if (!this.host.contains(range.commonAncestorContainer)) {
+      return null;
+    }
+    var node = range.startContainer;
+    var element = node.nodeType === 1 ? node : node.parentElement;
+    if (!element) {
+      return null;
+    }
+    return this._closestBlockElement(element);
+  };
+
+  /* Enter 直後の空の見出し / 引用を本文 (<p>) に変換する */
+  Editor.prototype._returnToParagraphAfterEnter = function () {
+    if (this.mode !== "wysiwyg") {
+      return;
+    }
+    var selection = window.getSelection();
+    var block = this.currentBlockElement();
+    if (!selection || !block) {
+      return;
+    }
+    var tag = block.nodeName;
+    if (tag !== "H1" && tag !== "H2" && tag !== "H3" && tag !== "H4" && tag !== "BLOCKQUOTE") {
+      return;
+    }
+    /* 分割後にキャレットがある側が空のブロックのときだけ本文に戻す
+       (文中 Enter のときは見出しが続く / 空でも画像があれば維持) */
+    if (block.textContent.trim() || block.querySelector("img")) {
+      return;
+    }
+    var paragraph = document.createElement("p");
+    block.parentNode.replaceChild(paragraph, block);
+    var next = document.createRange();
+    next.selectNodeContents(paragraph);
+    next.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(next);
+    this.saveSelection();
+    this._markDirty();
+    this.updatePreview();
+    this.emitSelection();
   };
 
   Editor.prototype.selectedText = function () {
@@ -812,6 +895,7 @@
     }
     this._markDirty();
     this.updatePreview();
+    this.emitSelection();
   };
 
   /* 「コードブロック」ボタン: 選択範囲を挟む形で pre.site-code-block を挿入する */
@@ -1000,6 +1084,7 @@
     }
     this._markDirty();
     this.updatePreview();
+    this.emitSelection();
   };
 
   /* execCommand が使えない場合の簡易フォールバック */
@@ -1095,6 +1180,7 @@
     this.host.hidden = mode !== "wysiwyg";
     this.source.hidden = mode !== "source";
     this.toolbar.style.display = mode === "wysiwyg" ? "" : "none";
+    this.emitSelection();
     this.updatePreview();
   };
 
