@@ -145,10 +145,12 @@ QUOTE_STYLE_MARKUP = (
 )
 
 # 見出し (h1〜h3) の装飾スタイル。
-# editor.js の HEADINGS_STYLE_MARKUP (プレビュー用) と内容を合わせること。
+# 公開ページ用 (htmledit 本体の UI やエディターに波及しないよう .container / article 配下に限定)。
 HEADINGS_STYLE_MARKUP = (
     '<style id="site-headings-style">\n'
-    "    h1 {\n"
+    "    .container h1,\n"
+    "    article h1 {\n"
+    "      display: flow-root;\n"
     "      background: #dfefff;\n"
     "      box-shadow: 0 0 0 5px #dfefff;\n"
     "      border: dashed 2px white;\n"
@@ -158,7 +160,9 @@ HEADINGS_STYLE_MARKUP = (
     "      line-height: 1.4;\n"
     "      color: #2b3138;\n"
     "    }\n"
-    "    h2 {\n"
+    "    .container h2,\n"
+    "    article h2 {\n"
+    "      display: flow-root;\n"
     "      position: relative;\n"
     "      background: #f1f8ff;\n"
     "      padding: 0.35em 0.5em;\n"
@@ -168,7 +172,8 @@ HEADINGS_STYLE_MARKUP = (
     "      line-height: 1.4;\n"
     "      color: #2b3138;\n"
     "    }\n"
-    "    h2::before {\n"
+    "    .container h2::before,\n"
+    "    article h2::before {\n"
     '      content: "";\n'
     "      position: absolute;\n"
     "      left: -1.5em;\n"
@@ -178,7 +183,9 @@ HEADINGS_STYLE_MARKUP = (
     "      height: 1em;\n"
     '      background: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 512 512\' fill=\'white\'%3E%3Cpath d=\'M410.3 231l11.3-11.3-33.9-33.9-62.1-62.1L291.7 89.8l-11.3 11.3-22.6 22.6L58.6 322.9c-10.4 10.4-18 23.3-22.2 37.4L1 480.7c-2.5 8.4-.2 17.5 6.1 23.7s15.3 8.5 23.7 6.1l120.3-35.4c14.1-4.2 27-11.8 37.4-22.2L387.7 253.7 410.3 231zM160 399.4l-9.1 22.7c-4 3.1-8.5 5.4-13.3 6.9L59.4 452l23-78.2c1.5-4.8 3.8-9.3 6.9-13.3l22.7-9.1 32 32zM362.7 18.7L341.3 40.1l33.9 33.9 21.4-21.4c6.2-6.2 6.2-16.4 0-22.6l-11.3-11.3c-6.2-6.2-16.4-6.2-22.6 0z\'/%3E%3C/svg%3E") no-repeat center / contain;\n'
     "    }\n"
-    "    h3 {\n"
+    "    .container h3,\n"
+    "    article h3 {\n"
+    "      display: flow-root;\n"
     "      position: relative;\n"
     "      background: #ffd98a;\n"
     "      padding: 4px 10px 4px 28px;\n"
@@ -188,7 +195,8 @@ HEADINGS_STYLE_MARKUP = (
     "      border-radius: 0 10px 10px 0;\n"
     "      margin: 1.4em 0 0.6em 20px;\n"
     "    }\n"
-    "    h3::before {\n"
+    "    .container h3::before,\n"
+    "    article h3::before {\n"
     '      content: "";\n'
     "      box-sizing: border-box;\n"
     "      position: absolute;\n"
@@ -207,6 +215,16 @@ HEADINGS_STYLE_MARKUP = (
     "    }\n"
     "    </style>"
 )
+
+
+def _ensure_in_head(html_text: str, marker: str, block: str) -> str:
+    """marker が無いページに </head> 直前で block を注入する."""
+    if not html_text or marker in html_text:
+        return html_text
+    close = re.search(r"</head\s*>", html_text, re.I)
+    if not close:
+        return _ensure_in_body(html_text, marker, block)
+    return html_text[: close.start()] + block + "\n" + html_text[close.start():]
 
 
 def _ensure_in_body(html_text: str, marker: str, block: str) -> str:
@@ -230,8 +248,15 @@ def _ensure_quote_style(html_text: str) -> str:
 
 
 def _ensure_headings_style(html_text: str) -> str:
-    """公開ページに見出しのスタイルが無ければ </body> 直前に注入する."""
-    return _ensure_in_body(html_text, 'id="site-headings-style"', HEADINGS_STYLE_MARKUP)
+    """公開ページに見出しのスタイルが無ければ </head> 直前に注入する."""
+    # body 内に旧スタイルがあれば一旦除去して head 側に注入し直す
+    if 'id="site-headings-style"' in html_text:
+        body_match = re.search(r"<body\b[\s\S]*?(<style\b[^>]*\bid=[\"']site-headings-style[\"'][^>]*>[\s\S]*?</style\s*>)", html_text, re.I)
+        if body_match:
+            html_text = html_text[: body_match.start(1)] + html_text[body_match.end(1) :]
+            return _ensure_in_head(html_text, 'id="site-headings-style"', HEADINGS_STYLE_MARKUP)
+        return html_text
+    return _ensure_in_head(html_text, 'id="site-headings-style"', HEADINGS_STYLE_MARKUP)
 
 
 def _ensure_site_env(html_text: str) -> str:
@@ -545,7 +570,7 @@ def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: boo
     lines = []
     if thumb_src:
         lines.append(f'<p style="text-align: right; margin: 0 0 8px;"><img src="{thumb_src}" alt="" style="{_THUMB_STYLE}" /></p>')
-    lines.append(f'<h2><a href="{link}" style="{_TITLE_LINK_STYLE}">{html.escape(title or "無題")}</a></h2>')
+    lines.append(f'<h1><a href="{link}" style="{_TITLE_LINK_STYLE}">{html.escape(title or "無題")}</a></h1>')
     read_more_link = f'<a href="{link}" style="{_READ_MORE_STYLE}">続きを読む</a>'
     read_more_label = "&nbsp;" + read_more_link  # 本文末尾とくっつかないよう一行空ける
     rendered = []

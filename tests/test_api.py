@@ -728,7 +728,7 @@ class ApiTestCase(unittest.TestCase):
         index = (repo / "public/index.html").read_text("utf-8")
         self.assertEqual(index.count("data-post-id"), 20)
         self.assertIn(
-            '<h2><a href="posts/2026/10/23/20261023-000021.html" style="color: inherit; text-decoration: none;">記事 21</a></h2>',
+            '<h1><a href="posts/2026/10/23/20261023-000021.html" style="color: inherit; text-decoration: none;">記事 21</a></h1>',
             index,
         )
         # 「続きを読む」は角丸のバッジ風リンク
@@ -770,7 +770,7 @@ class ApiTestCase(unittest.TestCase):
         index = (repo / "public/index.html").read_text("utf-8")
         self.assertIn("記事 21 (修正)", index)
         self.assertIn("更新後の本文です", index)
-        self.assertIn("記事 10</a></h2>", index)
+        self.assertIn("記事 10</a></h1>", index)
 
         # 投稿の削除は一覧から消え、過去ログページも整理される
         status, payload = self.request(

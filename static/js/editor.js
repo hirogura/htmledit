@@ -182,10 +182,31 @@
     if (!closeMatch) {
       return { prefix: html.slice(0, start), body: rest, suffix: "" };
     }
+    var prefix = html.slice(0, start);
+    var body = rest.slice(0, closeMatch.index);
+    var suffix = rest.slice(closeMatch.index);
+
+    /* body 内の公開用スタイル (site-headings-style) がエディター DOM に混入して
+       htmledit 自体に影響しないよう、head 側 (prefix) に移動する */
+    var stylePattern = /<style\b[^>]*\bid=["']site-headings-style["'][^>]*>[\s\S]*?<\/style\s*>\n?/gi;
+    var match;
+    while ((match = stylePattern.exec(body)) !== null) {
+      var block = match[0];
+      body = body.replace(block, "");
+      if (prefix.indexOf('id="site-headings-style"') < 0) {
+        var headClose = prefix.search(/<\/head\s*>/i);
+        if (headClose >= 0) {
+          prefix = prefix.slice(0, headClose) + block + prefix.slice(headClose);
+        } else {
+          prefix = block + prefix;
+        }
+      }
+    }
+
     return {
-      prefix: html.slice(0, start),
-      body: rest.slice(0, closeMatch.index),
-      suffix: rest.slice(closeMatch.index)
+      prefix: prefix,
+      body: body,
+      suffix: suffix
     };
   }
 
