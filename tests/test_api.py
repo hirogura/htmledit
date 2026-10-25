@@ -825,6 +825,8 @@ class ApiTestCase(unittest.TestCase):
         self.assertIn("print(&quot;hello&quot;)", index)
         snippet_html = index[index.index("20261023-000022") : index.index("20261023-000022") + 800]
         self.assertNotIn("<pre", snippet_html)
+        # 本文が短い記事でも一覧には「続きを読む」を表示する
+        self.assertIn("続きを読む", snippet_html)
 
         self.request("DELETE", f"/api/sites/{site_id}", {})
 

@@ -589,7 +589,7 @@ def _post_page_relpath(post_id: str) -> str:
 # --------------------------------------------------------------------------
 
 def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: bool, with_divider: bool, link: str, thumb_src: str = "", tags: str = "") -> str:
-    chunks, truncated = _snippet_parts(body_html)
+    chunks, _ = _snippet_parts(body_html)
     # タイトルは青字・下線にしない (シンプルに本文色で)
     lines = []
     if thumb_src:
@@ -603,11 +603,11 @@ def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: boo
             rendered.append('<pre class="site-code-block">' + html.escape("\n".join(chunk_lines)) + "</pre>")
         else:
             rendered.append("<p>" + "<br />\n  ".join(html.escape(line) for line in chunk_lines) + "</p>")
-    if truncated:
-        if rendered and rendered[-1].startswith("<p>"):
-            rendered[-1] = rendered[-1].replace("</p>", read_more_label + "</p>")
-        else:
-            rendered.append(f"<p>{read_more_link}</p>")
+    # 一覧ページは記事の抜粋なので、本文が短くても個別ページへの導線を必ず出す
+    if rendered and rendered[-1].startswith("<p>"):
+        rendered[-1] = rendered[-1].replace("</p>", read_more_label + "</p>")
+    else:
+        rendered.append(f"<p>{read_more_link}</p>")
     lines.extend(rendered)
     if with_timestamp:
         stamp = _stamp_text(post_id, tags)
