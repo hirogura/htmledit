@@ -377,7 +377,7 @@
             self.execCommand("formatBlock", value);
           });
           /* キャレット位置の段落スタイルを表示する (適用済みの見出しでも他の場所で再適用できるように) */
-          this.blockSelect = select;
+          self.blockSelect = select;
           fragment.appendChild(select);
           return;
         }
