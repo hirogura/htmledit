@@ -896,68 +896,6 @@
     "blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #9aa7b4; background: #f4f6f8; color: #4a5560; border-radius: 0 8px 8px 0; }\n" +
     "</style>\n";
 
-  /* 見出し (h1〜h3) の装飾スタイル (公開ページは posts.py 側で注入。内容を合わせること) */
-  var HEADINGS_STYLE_MARKUP =
-    '<style id="site-headings-style">\n' +
-    "h1 {\n" +
-    "  background: #dfefff;\n" +
-    "  box-shadow: 0 0 0 5px #dfefff;\n" +
-    "  border: dashed 2px white;\n" +
-    "  padding: 0.2em 0.5em;\n" +
-    "  margin: 1.2em 5px 0.6em;\n" +
-    "  font-size: 1.5em;\n" +
-    "  line-height: 1.4;\n" +
-    "  color: #2b3138;\n" +
-    "}\n" +
-    "h2 {\n" +
-    "  position: relative;\n" +
-    "  background: #f1f8ff;\n" +
-    "  padding: 0.35em 0.5em;\n" +
-    "  border-left: solid 2em #5c9ee7;\n" +
-    "  margin: 1.4em 0 0.6em;\n" +
-    "  font-size: 1.3em;\n" +
-    "  line-height: 1.4;\n" +
-    "  color: #2b3138;\n" +
-    "}\n" +
-    "h2::before {\n" +
-    '  content: "";\n' +
-    "  position: absolute;\n" +
-    "  left: -1.5em;\n" +
-    "  top: 50%;\n" +
-    "  transform: translateY(-50%);\n" +
-    "  width: 1em;\n" +
-    "  height: 1em;\n" +
-    '  background: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 512 512\' fill=\'white\'%3E%3Cpath d=\'M410.3 231l11.3-11.3-33.9-33.9-62.1-62.1L291.7 89.8l-11.3 11.3-22.6 22.6L58.6 322.9c-10.4 10.4-18 23.3-22.2 37.4L1 480.7c-2.5 8.4-.2 17.5 6.1 23.7s15.3 8.5 23.7 6.1l120.3-35.4c14.1-4.2 27-11.8 37.4-22.2L387.7 253.7 410.3 231zM160 399.4l-9.1 22.7c-4 3.1-8.5 5.4-13.3 6.9L59.4 452l23-78.2c1.5-4.8 3.8-9.3 6.9-13.3l22.7-9.1 32 32zM362.7 18.7L341.3 40.1l33.9 33.9 21.4-21.4c6.2-6.2 6.2-16.4 0-22.6l-11.3-11.3c-6.2-6.2-16.4-6.2-22.6 0z\'/%3E%3C/svg%3E") no-repeat center / contain;\n' +
-    "}\n" +
-    "h3 {\n" +
-    "  position: relative;\n" +
-    "  background: #ffd98a;\n" +
-    "  padding: 4px 10px 4px 28px;\n" +
-    "  font-size: 20px;\n" +
-    "  line-height: 1.4;\n" +
-    "  color: #474747;\n" +
-    "  border-radius: 0 10px 10px 0;\n" +
-    "  margin: 1.4em 0 0.6em 20px;\n" +
-    "}\n" +
-    "h3::before {\n" +
-    '  content: "";\n' +
-    "  box-sizing: border-box;\n" +
-    "  position: absolute;\n" +
-    "  width: 40px;\n" +
-    "  height: 40px;\n" +
-    "  left: -20px;\n" +
-    "  top: 50%;\n" +
-    "  transform: translateY(-50%);\n" +
-    "  background-color: #ffa337;\n" +
-    "  border: solid 3px white;\n" +
-    "  border-radius: 50%;\n" +
-    '  background-image: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 512 512\' fill=\'white\'%3E%3Cpath d=\'M505.1 19.1c-1.2-5.5-6.7-11-12.2-12.2C460.7 0 435.5 0 410.4 0 307.2 0 245.3 55.2 199.1 128H94.8c-16.3 0-35.6 11.9-42.9 26.5L2.5 253.3A28.4 28.4 0 0 0 0 264a24 24 0 0 0 24 24h103.8l-22.5 22.5c-11.4 11.4-13 32.3 0 45.3l50.9 50.9c11.2 11.2 32.2 13.2 45.3 0l22.5-22.5V488a24 24 0 0 0 24 24 28.6 28.6 0 0 0 10.7-2.5l98.7-49.4c14.6-7.3 26.5-26.5 26.5-42.9V312.8c72.6-46.3 128-108.4 128-211.1 0-25.2 0-50.4-7-82.6zM384 168a40 40 0 1 1 40-40 40 40 0 0 1-40 40z\'/%3E%3C/svg%3E");\n' +
-    "  background-repeat: no-repeat;\n" +
-    "  background-position: center;\n" +
-    "  background-size: 20px 20px;\n" +
-    "}\n" +
-    "</style>\n";
-
   function ensureInBody(html, marker, markup) {
     if (!html || html.indexOf(marker) >= 0) {
       return html;
@@ -972,7 +910,6 @@
   Editor.prototype.__ensureCodeCopy = function (html) {
     html = ensureInBody(html, 'id="site-code-copy-script"', CODE_COPY_MARKUP);
     html = ensureInBody(html, 'id="site-quote-style"', QUOTE_STYLE_MARKUP);
-    html = ensureInBody(html, 'id="site-headings-style"', HEADINGS_STYLE_MARKUP);
     return html;
   };
 
