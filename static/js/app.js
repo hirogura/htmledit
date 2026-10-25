@@ -1660,6 +1660,20 @@
     return parts.join("\n");
   }
 
+  /* 検索ボックス・タグ表示に必要な CSS ルール (サンプル生成 / 既存ページへの適用で共用) */
+  function siteSearchCssRules() {
+    return [
+      "    .site-topbar .site-search { display: flex; gap: 6px; margin-left: 8px; }",
+      '    .site-topbar .site-search input[type="search"] { width: 160px; padding: 4px 8px; border: 1px solid #e2e6ea; border-radius: 6px; font-size: 13px; }',
+      '    .site-topbar .site-search button { padding: 4px 10px; border: 1px solid #e2e6ea; background: #fff; border-radius: 6px; font-size: 13px; line-height: 1.4; color: #2b3138; cursor: pointer; -webkit-appearance: none; appearance: none; }',
+      '    .site-topbar .site-search button:hover { border-color: #2563eb; color: #2563eb; }',
+      "    .site-search-status { color: #69737e; font-size: 14px; padding: 8px 0; }",
+      "    .site-search-status a { color: #2563eb; }",
+      "    .site-tag { display: inline-block; margin-right: 6px; padding: 1px 8px; border: 1px solid #e2e6ea; border-radius: 10px; font-size: 12px; color: #37414c; text-decoration: none; }",
+      "    .site-tag:hover { border-color: #2563eb; color: #2563eb; }"
+    ];
+  }
+
   /* サンプル HTML を生成する (投稿用の container / hero 構成を含む) */
   function buildSampleHtml(settings) {
     var title = settings.title || "サイト";
@@ -1715,16 +1729,7 @@
       '    .site-topbar a:hover { color: #2563eb; }'
     ];
     if (settings.addSearch) {
-      css.push(
-        "    .site-topbar .site-search { display: flex; gap: 6px; margin-left: 8px; }",
-        '    .site-topbar .site-search input[type="search"] { width: 160px; padding: 4px 8px; border: 1px solid #e2e6ea; border-radius: 6px; font-size: 13px; }',
-        '    .site-topbar .site-search button { padding: 4px 10px; border: 1px solid #e2e6ea; background: #fff; border-radius: 6px; font-size: 13px; cursor: pointer; }',
-        '    .site-topbar .site-search button:hover { border-color: #2563eb; color: #2563eb; }',
-        "    .site-search-status { color: #69737e; font-size: 14px; padding: 8px 0; }",
-        "    .site-search-status a { color: #2563eb; }",
-        "    .site-tag { display: inline-block; margin-right: 6px; padding: 1px 8px; border: 1px solid #e2e6ea; border-radius: 10px; font-size: 12px; color: #37414c; text-decoration: none; }",
-        "    .site-tag:hover { border-color: #2563eb; color: #2563eb; }"
-      );
+      css = css.concat(siteSearchCssRules());
     }
     css.push(
       "",
@@ -2255,6 +2260,9 @@
     /* 検索ボックススクリプトを張り替える (チェックが外れたら除去) */
     output = output.replace(siteSearchScriptPattern(), "");
     if (settings.addSearch) {
+      /* 検索関連の CSS ルールを最新のものに張り替える (iOS でボタン文字が消える問題の回避策を含む) */
+      output = stripSearchStyles(output);
+      output = insertFirstStyleRules(output, siteSearchCssRules().join("\n"));
       output = output.replace(/<\/body\s*>/i, function (bodyClose) {
         return "\n  " + buildSiteSearchScriptHtml() + "\n" + bodyClose;
       });
@@ -2262,6 +2270,17 @@
       output = stripSearchStyles(output);
     }
     return output;
+  }
+
+  /* 最初の <style> ブロックの先頭に CSS ルールを差し込む (無ければ </head> 前に <style> を追加) */
+  function insertFirstStyleRules(html, rules) {
+    var open = /<style\b[^>]*>/i.exec(html);
+    if (open) {
+      return html.slice(0, open.index + open[0].length) + "\n" + rules + html.slice(open.index + open[0].length);
+    }
+    return html.replace(/<\/head\s*>/i, function (headClose) {
+      return "<style>\n" + rules + "\n</style>\n" + headClose;
+    });
   }
 
   /* 検索ボックス用の CSS ルール (.site-search を含むセレクター) を取り除く */
