@@ -532,13 +532,20 @@ def copy_asset(site: Site, source: str, target: str = "", page: str = "") -> dic
     }
 
 
-def save_upload(site: Site, filename: str, data: bytes, page: str = "") -> dict:
-    """アップロードされた画像バイト列を日付付きフォルダへ保存する."""
+def save_upload(site: Site, filename: str, data: bytes, page: str = "", prefix: str = "public/images") -> dict:
+    """アップロードされた画像バイト列を日付付きフォルダへ保存する.
+
+    prefix で保存先のルートフォルダを指定できる (下書きは draft/images を指定)。
+    """
     if not data:
         raise SiteError("画像データが空です。")
     root = Path(os.path.realpath(site.path))
     name = sanitize_image_name(filename)
-    relative = f"{asset_dir()}/{name}"
+    parts = [part for part in (prefix or "public/images").strip().strip("/").replace("\\", "/").split("/") if part]
+    if not parts or any(part in (".", "..") for part in parts):
+        raise SiteError("保存先フォルダの指定が不正です。")
+    prefix = "/".join(parts)
+    relative = f"{asset_dir(prefix=prefix)}/{name}"
     target_path = _unique_path(root, relative)
 
     target_path.parent.mkdir(parents=True, exist_ok=True)

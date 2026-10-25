@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import html
 import logging
+import os
+import posixpath
 import re
+import shutil
 import threading
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -27,6 +30,12 @@ SNIPPET_MAX_CHARS = 100
 
 INDEX_PAGE = "public/index.html"
 POST_PAGE_PREFIX = "public/posts"
+
+# 下書き (非公開) は public と同じ構成を draft/ 以下に作成し、
+# 「保存・Push」時に draft → public へ移動して日時 / ファイル名を確定させる
+DRAFT_PREFIX = "draft"
+DRAFT_PAGE_PREFIX = "draft/posts"
+DRAFT_IMAGE_PREFIX = "draft/images"
 
 _SMALL_TEXT_STYLE = "font-size: 0.8em; color: #888;"
 _THUMB_STYLE = "height: 120px; width: auto; border-radius: 8px; float: right; margin: 0 0 8px 12px;"
@@ -584,6 +593,11 @@ def _post_page_relpath(post_id: str) -> str:
     return f"posts/{post_id[:4]}/{post_id[4:6]}/{post_id[6:8]}/{post_id}.html"
 
 
+def _draft_page_relpath(post_id: str) -> str:
+    """下書きページのサイトルートからの相対パス (draft/posts/YYYY/MM/DD/HHMMSS.html) を返す."""
+    return f"{DRAFT_PAGE_PREFIX}/{post_id[:4]}/{post_id[4:6]}/{post_id[6:8]}/{post_id}.html"
+
+
 # --------------------------------------------------------------------------
 # HTML 生成
 # --------------------------------------------------------------------------
@@ -642,13 +656,17 @@ def _post_article(post_id: str, title: str, body_html: str, with_timestamp: bool
     return f"<article {attrs}>\n  " + "\n  ".join(inner) + "\n</article>"
 
 
-def _adjust_relative_hrefs(doc: str, depth: int = 1) -> str:
+def _adjust_relative_hrefs(doc: str, depth: int = 1, site_prefix: str = "") -> str:
     """個別ページ (posts/YYYY/MM/DD/) 内の相対リンクを .. の連鎖付きに補正する.
 
     対象は <a> / <link> の href と <img> の src (サイトロゴなどヘッダー画像も
     個別ページの階層で参照できるように)。depth = 個別ページの public/ 内での
     ディレクトリの深さ (posts/ID.html なら 1)。script/style の中身は触らない。
+    site_prefix が空文字でない場合 (下書きページなど public 外への配置) は、
+    .. の連鎖の後ろに site_prefix ("/public/" 形式) を挟んで public 内を指す。
     """
+    if site_prefix and not site_prefix.endswith("/"):
+        site_prefix += "/"
     pattern = re.compile(r'(<(?:a|link)\b[^>]*\bhref\s*=\s*|<img\b[^>]*\bsrc\s*=\s*)(["\'])([^"\']+?)\2', re.I)
     mask_re = re.compile(r"<(script|style)\b[\s\S]*?</\1\s*>", re.I)
 
@@ -663,7 +681,7 @@ def _adjust_relative_hrefs(doc: str, depth: int = 1) -> str:
             or re.match(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:", text)
         ):
             return match.group(0)
-        return match.group(1) + quote + "../" * depth + value + quote
+        return match.group(1) + quote + "../" * depth + site_prefix + value + quote
 
     parts = []
     last = 0
@@ -701,7 +719,7 @@ def _replace_main_inner(doc: str, article_html: str) -> str:
     return doc
 
 
-def _render_post_document(index_html: str, article_html: str, page_title: str, depth: int = 1) -> str:
+def _render_post_document(index_html: str, article_html: str, page_title: str, depth: int = 1, site_prefix: str = "") -> str:
     if not index_html:
         return (
             "<!doctype html>\n"
@@ -726,7 +744,7 @@ def _render_post_document(index_html: str, article_html: str, page_title: str, d
             "</body>\n"
             "</html>\n"
         )
-    doc = _adjust_relative_hrefs(index_html, depth)
+    doc = _adjust_relative_hrefs(index_html, depth, site_prefix)
     doc = _replace_title(doc, page_title)
     return _replace_main_inner(doc, article_html)
 
@@ -971,6 +989,247 @@ def publish(
         sites.write_file(site, post_path, _ensure_site_env(doc))
         summary = rebalance(site)
         return {"ok": True, "post": post_path, **summary}
+
+
+def sync_saved_post(site: Site, relative: str) -> dict | None:
+    """public/posts/YYYY/MM/DD/ID.html の保存を検知して一覧ページを再構築する."""
+    normalized = (relative or "").strip().lstrip("/")
+    # posts/ 直下 (旧形式) と posts/YYYY/MM/DD/ 配下 (階層化) の両方に対応する
+    if not re.match(rf"^{re.escape(POST_PAGE_PREFIX)}/.+\.html$", normalized, re.I):
+        return None
+    post_id = Path(normalized).stem
+    if not POST_ID_RE.match(post_id):
+        return None
+    try:
+        return rebalance(site)
+    except Exception as exc:  # 保存自体は成功させる
+        logger.warning("投稿同期に失敗しました (%s): %s", normalized, exc)
+        return {"ok": False, "error": str(exc)}
+
+
+# --------------------------------------------------------------------------
+# 下書き (draft/) の作成と公開
+# --------------------------------------------------------------------------
+
+def _site_index_head(site: Site) -> tuple[str, str]:
+    """サイトの index.html と <title> (サイト名取り出し用) を返す."""
+    root = Path(site.path)
+    index_path = root / "public" / "index.html"
+    if not index_path.is_file():
+        return "", ""
+    index_html = index_path.read_text("utf-8")
+    site_title = ""
+    match = _TITLE_RE.search(index_html)
+    if match:
+        site_title = _plain_text(match.group(0))
+    return index_html, site_title
+
+
+def _page_title(title: str, site_title: str) -> str:
+    title = (title or "").strip() or "無題"
+    return f"{title} - {site_title}" if site_title and site_title != title else title
+
+
+def create_draft(
+    site: Site,
+    post_id: str,
+    title: str,
+    body_html: str = "",
+    with_timestamp: bool = True,
+    with_divider: bool = True,
+    tags: str = "",
+) -> dict:
+    """下書きページ (draft/posts/YYYY/MM/DD/ID.html) を作成する (一覧ページには反映しない).
+
+    構成は publish() と同じ<article> (タイトル / 本文 / 写真 / 日時) 。
+    画像はクライアント側で事前に draft/images/ 以下へ保存し、本文 HTML は
+    下書きページからの相対パスで参照する。
+    """
+    with _LOCK:
+        post_id = (post_id or "").strip()
+        if not POST_ID_RE.match(post_id):
+            raise SiteError("投稿 ID は YYYYMMDD-HHMMSS 形式で指定してください。")
+        tags = _normalize_tags(tags)
+        index_html, site_title = _site_index_head(site)
+        rel_page = _draft_page_relpath(post_id)
+        # ドキュメントの chrome (topbar / head 内リンク) は下書きページの位置から
+        # public 内を指すように ".." 連鎖 + "public/" で補正する
+        depth = len(PurePosixPath(rel_page).parent.parts)
+        # 戻りリンクは公開後の位置 (public/posts/YYYY/MM/DD/) と同じ ".." 連鎖で生成する。
+        # 下書きのプレビューでは一覧ページへ戻れない代わりに、公開後の HTML をそのまま使える。
+        back_depth = len(PurePosixPath(_post_page_relpath(post_id)).parent.parts)
+        article_html = _post_article(
+            post_id, title, body_html, with_timestamp, with_divider, "../" * back_depth + "index.html", tags
+        )
+        doc = _render_post_document(
+            index_html, article_html, _page_title(title, site_title), depth, site_prefix="public"
+        )
+        sites.write_file(site, rel_page, _ensure_site_env(doc))
+        return {"ok": True, "post": rel_page}
+
+
+_DATE_LEADING_RE = re.compile(r"^\d{4}年\d{1,2}月\d{1,2}日（[月火水木金土日]）\d{2}:\d{2}")
+_STAMP_PARA_RE = re.compile(r"(<p\b(?=[^>]*font-size)[^>]*>)([\s\S]*?)(</p\s*>)", re.I)
+
+
+def _retarget_stamp_dates(doc: str, post_id: str) -> str:
+    """記事の日時段落 (font-size 指定の <p>) の日付部分を指定 ID の日時に差し替える."""
+    stamp = _timestamp_text(post_id)
+
+    def replace(match: re.Match) -> str:
+        inner = match.group(2)
+        if not _DATE_LEADING_RE.match(inner):
+            return match.group(0)
+        rest = inner[_DATE_LEADING_RE.match(inner).end() :]
+        return match.group(1) + stamp + rest + match.group(3)
+
+    return _STAMP_PARA_RE.sub(replace, doc)
+
+
+def _retarget_post_ids(doc: str, post_id: str) -> str:
+    """data-post-id 属性を公開時の ID に差し替える."""
+    # 見つかった旧 ID はすべて公開時の ID に差し替える
+    old_ids = {match.group(1) for match in re.finditer(r'data-post-id\s*=\s*"([^"]*)"', doc, re.I)}
+    for old in old_ids:
+        if POST_ID_RE.match(old) and old != post_id:
+            doc = doc.replace(f'data-post-id="{old}"', f'data-post-id="{post_id}"')
+    return doc
+
+
+def _move_draft_images(site: Site, doc: str, page_rel: str, new_page_rel: str) -> tuple[str, list[str]]:
+    """下書きページに含まれる相対 <img src> の参照先を公開後の位置へ移動して書き換える.
+
+    - draft/ 以下の画像は同名の位置へ public/ 側に移す (draft/images/… → public/images/…)
+    - draft/ 以外の相対参照は移動せず、公開後のページ位置から正しい相対パスに付け直す
+    - 外部 URL や data URI は変更しない
+    """
+    root = Path(os.path.realpath(site.path))
+    pattern = re.compile(r'(<img\b[^>]*\bsrc\s*=\s*)(["\'])([^"\']+?)\2', re.I)
+    mask_re = re.compile(r"<(script|style)\b[\s\S]*?</\1\s*>", re.I)
+    moved: list[str] = []
+
+    def resolve(src: str) -> str | None:
+        text = src.strip()
+        if not text or text.startswith("#") or text.startswith("//") or text.startswith(r"\\"):
+            return None
+        if re.match(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:", text):
+            return None
+        if text.startswith("/"):
+            relative = text.lstrip("/")
+        else:
+            relative = os.path.normpath(os.path.join(os.path.dirname(page_rel), text))
+            relative = relative.replace(os.sep, "/")
+        while relative.startswith("../"):
+            relative = relative[3:]
+        target = root / relative
+        if not target.is_file():
+            return None
+        return relative
+
+    def new_reference(relative: str) -> str | None:
+        """公開後ページ基準の新しい src (移動が必要なら先にファイルを動かす) を返す."""
+        if relative.startswith(DRAFT_PREFIX + "/"):
+            moved_rel = "public" + relative[len(DRAFT_PREFIX):]
+            source = root / relative
+            target = sites._unique_path(root, moved_rel)
+            if source.resolve() != target.resolve():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(source), str(target))
+                moved.append(target.parent.relative_to(root).as_posix() + "/")
+            return posixpath.relpath(
+                target.relative_to(root).as_posix(), str(PurePosixPath(new_page_rel).parent)
+            )
+        if relative.startswith("public/"):
+            return posixpath.relpath(
+                relative, str(PurePosixPath(new_page_rel).parent)
+            )
+        return None
+
+    def replace(match: re.Match) -> str:
+        relative = resolve(match.group(3))
+        if relative is None:
+            return match.group(0)
+        reference = new_reference(relative)
+        if not reference:
+            return match.group(0)
+        return match.group(1) + match.group(2) + reference + match.group(2)
+
+    parts = []
+    last = 0
+    for mask in mask_re.finditer(doc):
+        parts.append(pattern.sub(replace, doc[last : mask.start()]))
+        parts.append(mask.group(0))
+        last = mask.end()
+    parts.append(pattern.sub(replace, doc[last:]))
+    return "".join(parts), moved
+
+
+def _prune_empty_draft_dirs(root: Path) -> None:
+    """draft/ 内の空ディレクトリを取り除く (draft/ 自体は残す)."""
+    base = root / DRAFT_PREFIX
+    if not base.is_dir():
+        return
+    candidates = [path for path in base.rglob("*") if path.is_dir()]
+    for path in sorted(candidates, key=lambda item: len(item.parts), reverse=True):
+        try:
+            path.rmdir()
+        except OSError:
+            pass
+
+
+def publish_draft_page(site: Site, relative: str, now: datetime | None = None) -> dict:
+    """下書きページを public 以下へ移動して公開し、日時 / ファイル名を保存時点で確定させる.
+
+    - 下書き HTML を draft/ → public/posts/YYYY/MM/DD/ へ移動 (ファイル名は公開時刻の ID)
+    - data-post-id と本文内の日付段落は公開時刻に差し替える
+    - 下書きが参照する draft/ 以下の画像も public 側へ移動して参照を書き換える
+    - 下書きファイルを削除して一覧ページを再構築する
+    """
+    draft_rel = (relative or "").strip().replace("\\", "/").lstrip("/")
+    if not draft_rel.startswith(DRAFT_PREFIX + "/"):
+        raise SiteError("draft/ 以下のページを指定してください。")
+    if not draft_rel.lower().endswith((".html", ".htm")):
+        raise SiteError("下書きの HTML ファイルを指定してください。")
+
+    stamp = now if now is not None else datetime.now()
+    post_id = stamp.strftime("%Y%m%d-%H%M%S")
+    root = Path(os.path.realpath(site.path))
+
+    with _LOCK:
+        draft_path = root / draft_rel
+        if not draft_path.is_file():
+            raise SiteError(f"下書きが見つかりません: {draft_rel}")
+        try:
+            doc = draft_path.read_text("utf-8")
+        except OSError as exc:
+            raise SiteError(f"下書きを読み込めません: {exc}") from exc
+
+        doc = _retarget_post_ids(doc, post_id)
+        doc = _retarget_stamp_dates(doc, post_id)
+
+        new_page_rel = f"public/{_post_page_relpath(post_id)}"
+        doc, moved = _move_draft_images(site, doc, draft_rel, new_page_rel)
+
+        # chrome (head / topbar) の href は下書き生成時に ".."×下書き深さ + "public/…" の
+        # 形で書かれている。公開後のページは public/posts/YYYY/MM/DD/ にあるので
+        # ".." を 1 つ減らして public プレフィックスを外すと公開ページと同じ参照になる。
+        draft_depth = len(PurePosixPath(draft_rel).parent.parts)
+        public_depth = len(PurePosixPath(_post_page_relpath(post_id)).parent.parts)
+        if draft_depth != public_depth:
+            doc = doc.replace(
+                "../" * draft_depth + "public/",
+                "../" * public_depth,
+            )
+
+        sites.write_file(site, new_page_rel, _ensure_site_env(doc))
+        try:
+            draft_path.unlink()
+        except OSError as exc:
+            logger.warning("下書きの削除に失敗しました (%s): %s", draft_rel, exc)
+        _prune_empty_draft_dirs(root)
+
+        summary = rebalance(site)
+        return {"ok": True, "post": new_page_rel, "images": sorted(set(moved)), **summary}
 
 
 def sync_saved_post(site: Site, relative: str) -> dict | None:

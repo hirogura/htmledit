@@ -334,6 +334,45 @@ def create_post(request: Request, params: dict) -> dict:
         raise ApiError(400, str(exc)) from exc
 
 
+@route("POST", r"/api/sites/(?P<site_id>[^/]+)/drafts")
+def create_draft(request: Request, params: dict) -> dict:
+    """下書きページ (draft/posts/YYYY/MM/DD/ID.html) を作成する (一覧には反映しない)."""
+    site = _site(params["site_id"])
+    payload = request.json()
+    post_id = str(payload.get("id", "")).strip()
+    title = str(payload.get("title", "")).strip()
+    body_html = str(payload.get("bodyHtml", "") or "")
+    with_timestamp = bool(payload.get("timestamp", True))
+    with_divider = bool(payload.get("divider", True))
+    tags = str(payload.get("tags", "") or "")
+    try:
+        return posts.create_draft(
+            site,
+            post_id,
+            title=title,
+            body_html=body_html,
+            with_timestamp=with_timestamp,
+            with_divider=with_divider,
+            tags=tags,
+        )
+    except SiteError as exc:
+        raise ApiError(400, str(exc)) from exc
+
+
+@route("POST", r"/api/sites/(?P<site_id>[^/]+)/drafts/publish")
+def publish_draft(request: Request, params: dict) -> dict:
+    """下書きページを public 以下へ移動して公開し、一覧ページを再構築する."""
+    site = _site(params["site_id"])
+    payload = request.json() if request.body else {}
+    path = str(payload.get("path", "")).strip()
+    if not path:
+        raise ApiError(400, "path が指定されていません。")
+    try:
+        return posts.publish_draft_page(site, path)
+    except SiteError as exc:
+        raise ApiError(400, str(exc)) from exc
+
+
 @route("POST", r"/api/sites/(?P<site_id>[^/]+)/folder")
 def create_site_folder(request: Request, params: dict) -> dict:
     """フォルダを作成する (エクスプローラの右クリックメニュー)."""
@@ -449,13 +488,14 @@ def upload_asset(request: Request, params: dict) -> dict:
     site = _site(params["site_id"])
     name = request.q("name", "")
     page = request.q("page", "")
+    prefix = request.q("prefix", "public/images")
     content_type = request.header("content-type", "")
     if content_type and not content_type.startswith("image/"):
         raise ApiError(400, "画像ファイルのみアップロードできます。")
     if len(request.body) > CONFIG.max_file_size:
         raise ApiError(413, "画像ファイルが大きすぎます。")
     try:
-        result = sites.save_upload(site, name, request.body, page=page)
+        result = sites.save_upload(site, name, request.body, page=page, prefix=prefix)
     except SiteError as exc:
         raise ApiError(400, str(exc)) from exc
     result["ignored"] = gitcmd.is_ignored(site.path, result["path"])

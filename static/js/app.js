@@ -641,6 +641,9 @@
         setBaseHref(state.siteId, path);
         setEditorMode(isHtmlFile(path) ? "wysiwyg" : "source");
         editor.setStatus(path + " (" + formatBytes(payload.size) + ") を読み込みました");
+        el.btnEditorSavePush.title = isDraftPath(path)
+          ? "下書きを draft/ 以下に保存してから public/ 以下へ移動・公開し、push まで行う (日付 / ファイル名はこの時点のものに確定)"
+          : "現在のファイルを保存して「投稿+日付」でコミットし、push まで一括で行う";
         refreshTree();
       })
       .catch(function (error) {
@@ -1031,6 +1034,10 @@
     el.postTitle.focus();
   }
 
+  function isDraftPath(path) {
+    return /^draft\//i.test(String(path || ""));
+  }
+
   function renderPostPhotoList() {
     var list = el.postPhotoList;
     list.innerHTML = "";
@@ -1187,14 +1194,19 @@
       });
   }
 
-  function postUploadImage(siteId, file, page) {
-    return fetch(
+  function postUploadImage(siteId, file, page, prefix) {
+    var query =
       "/api/sites/" +
-        encodeURIComponent(siteId) +
-        "/assets/upload?name=" +
-        encodeURIComponent(file.name) +
-        "&page=" +
-        encodeURIComponent(page),
+      encodeURIComponent(siteId) +
+      "/assets/upload?name=" +
+      encodeURIComponent(file.name) +
+      "&page=" +
+      encodeURIComponent(page);
+    if (prefix) {
+      query += "&prefix=" + encodeURIComponent(prefix);
+    }
+    return fetch(
+      query,
       {
         method: "POST",
         headers: { "Content-Type": file.type || "application/octet-stream", "X-Requested-With": "htmledit" },
@@ -1268,7 +1280,8 @@
     return lines.join("\n");
   }
 
-  function submitPostDialog(withPush) {
+  function submitPostDialog(kind) {
+    kind = kind || "publish";
     if (!state.siteId) {
       el.postError.textContent = "先にサイトを追加してください。";
       el.postError.hidden = false;
@@ -1293,9 +1306,13 @@
     var siteId = state.siteId;
     var photos = (state.postPhotos || []).slice();
     var postId = postIdFromNow();
-    /* 個別ページは日付で階層分けする: public/posts/YYYY/MM/DD/HHMMSS.html */
+    var isDraft = kind === "draft";
+    /* 下書きは public と同じ構成を draft/ 以下に作る:
+       draft/posts/YYYY/MM/DD/HHMMSS.html (+ 画像は draft/images/YYYY/MM/DD/) */
+    var imagePrefix = isDraft ? "draft/images" : "";
+    var pagePrefix = isDraft ? "draft" : "public";
     var postPath =
-      "public/posts/" + postId.slice(0, 4) + "/" + postId.slice(4, 6) + "/" + postId.slice(6, 8) + "/" + postId + ".html";
+      pagePrefix + "/posts/" + postId.slice(0, 4) + "/" + postId.slice(4, 6) + "/" + postId.slice(6, 8) + "/" + postId + ".html";
 
     if (state.path === POST_PAGE && editor && editor.dirty) {
       if (!confirm("未保存の変更があります。投稿した内容で public/index.html を上書きしますか？")) {
@@ -1303,6 +1320,8 @@
       }
     }
 
+    busy(el.btnPostDraft, true);
+    el.btnPostDraft.disabled = true;
     busy(el.btnPostSubmit, true);
     el.btnPostSubmit.disabled = true;
     busy(el.btnPostPush, true);
@@ -1315,8 +1334,8 @@
         return postResizeImage(file, maxSide)
           .then(function (image) {
             toast((index + 1) + " / " + photos.length + " 枚目をアップロード中…", "info");
-            /* 個別ページ (public/posts/YYYY/MM/DD/ID.html) からの相対パスで参照する */
-            return postUploadImage(siteId, image, postPath);
+            /* 個別ページからの相対パスで参照する */
+            return postUploadImage(siteId, image, postPath, imagePrefix);
           })
           .then(function (reference) {
             references.push(reference);
@@ -1324,10 +1343,11 @@
       });
     });
 
+    var endpoint = isDraft ? "drafts" : "posts";
     uploadChain
       .then(function () {
         return api(
-          "/api/sites/" + encodeURIComponent(siteId) + "/posts",
+          "/api/sites/" + encodeURIComponent(siteId) + "/" + endpoint,
           {
             method: "POST",
             body: {
@@ -1353,6 +1373,19 @@
         /* オプションは既定の状態 (すべて On) に戻す */
         el.postTimestamp.checked = true;
         el.postDivider.checked = true;
+        if (isDraft) {
+          /* 下書きは Git にコミットせずローカル (draft/) のみに保存する */
+          togglePane("post", false);
+          toast("下書きを保存しました: " + (payload.post || postPath), "success");
+          refreshTree();
+          refreshGit();
+          /* そのまま WYSIWYG で編集できるよう開く */
+          if (!editor || !editor.dirty ||
+              confirm("下書きを開くと、開いているファイルの未保存の変更は破棄されます。よろしいですか？")) {
+            openFile(payload.post);
+          }
+          return null;
+        }
         toast(
           "投稿しました: " + (payload.post || postPath) +
             (payload.pages > 0 ? "\n一覧: " + (payload.paths || []).join(", ") : ""),
@@ -1363,7 +1396,7 @@
         if (state.path === POST_PAGE) {
           openFile(POST_PAGE);
         }
-        if (!withPush) {
+        if (kind !== "publish-push") {
           /* 「投稿」ボタン: 保存が済んだら投稿パネルを閉じる */
           togglePane("post", false);
           return null;
@@ -1389,10 +1422,9 @@
           });
       })
       .catch(function (error) {
-        var message =
-          error.status === 404
-            ? POST_PAGE + " が見つかりません。先にページを作成してください。"
-            : error.message;
+        var message = error.status === 404 && !isDraft
+          ? POST_PAGE + " が見つかりません。先にページを作成してください。"
+          : error.message;
         el.postError.textContent = message;
         el.postError.hidden = false;
         /* エディター側ボタンから実行して投稿パネルが閉じている場合はトーストでも知らせる */
@@ -1401,6 +1433,8 @@
         }
       })
       .finally(function () {
+        busy(el.btnPostDraft, false);
+        el.btnPostDraft.disabled = false;
         busy(el.btnPostSubmit, false);
         el.btnPostSubmit.disabled = false;
         busy(el.btnPostPush, false);
@@ -1416,6 +1450,7 @@
     }
     var siteId = state.siteId;
     var path = state.path;
+    var isDraft = isDraftPath(path);
     busy(el.btnEditorSavePush, true);
     el.btnEditorSavePush.disabled = true;
     var saved = api("/api/sites/" + encodeURIComponent(siteId) + "/file", {
@@ -1427,6 +1462,37 @@
         toast("保存しました: " + payload.path, "success");
         refreshTree();
         refreshGit();
+        if (isDraft) {
+          /* 下書きは保存後に draft/ → public/ へ移動して公開する。
+             ファイル名と HTML 内の日付はこの時点のものに確定する */
+          return api(
+            "/api/sites/" + encodeURIComponent(siteId) + "/drafts/publish",
+            { method: "POST", body: { path: path } }
+          ).then(function (published) {
+            if (state.path === path) {
+              openFile(published.post);
+            }
+            return api(
+              "/api/sites/" + encodeURIComponent(siteId) + "/git/commit",
+              { method: "POST", body: { message: "投稿 " + postCommitStamp() } }
+            ).then(function (committed) {
+              toast(
+                "公開しました: " + published.post +
+                  (published.pages > 0 ? "\n一覧: " + (published.paths || []).join(", ") : ""),
+                "success"
+              );
+              refreshTree();
+              refreshGit();
+              return api(
+                "/api/sites/" + encodeURIComponent(siteId) + "/git/push",
+                { method: "POST", body: {} }
+              ).then(function (pushed) {
+                toast("push 完了\n" + (pushed.output || "").trim(), "success");
+                refreshGit();
+              });
+            });
+          });
+        }
         var message = "投稿 " + postCommitStamp();
         return api("/api/sites/" + encodeURIComponent(siteId) + "/git/commit", {
           method: "POST",
@@ -1437,10 +1503,11 @@
         });
       })
       .then(function (payload) {
-        toast("push 完了\n" + (payload.output || "").trim(), "success");
-        refreshGit();
-      });
-    saved
+        if (payload && payload.output !== undefined && !isDraft) {
+          toast("push 完了\n" + (payload.output || "").trim(), "success");
+          refreshGit();
+        }
+      })
       .catch(function (error) {
         toast(error.message || String(error), "error");
       })
@@ -3392,9 +3459,11 @@
       return;
     }
     var name = baseName(path);
+    /* 下書き編集時は画像を draft/images 以下に取り込む (公開時に public 側へ移動する) */
+    var target = isDraftPath(state.path) ? "draft/images" : "";
     api("/api/sites/" + encodeURIComponent(state.siteId) + "/assets", {
       method: "POST",
-      body: { source: path, page: state.path || "" }
+      body: { source: path, page: state.path || "", target: target }
     })
       .then(function (payload) {
         editor.insertImage(payload.reference, name);
@@ -3432,6 +3501,10 @@
         reader.onload = function () {
           var query =
             "?name=" + encodeURIComponent(source.name) + "&page=" + encodeURIComponent(state.path || "");
+          /* 下書き編集時は draft/images 以下に保存する (公開時に public 側へ移動する) */
+          if (isDraftPath(state.path)) {
+            query += "&prefix=" + encodeURIComponent("draft/images");
+          }
           fetch(
             "/api/sites/" + encodeURIComponent(state.siteId) + "/assets/upload" + query,
             {
@@ -3854,10 +3927,13 @@
       }
     });
     el.btnPostSubmit.addEventListener("click", function () {
-      submitPostDialog(false);
+      submitPostDialog("publish");
     });
     el.btnPostPush.addEventListener("click", function () {
-      submitPostDialog(true);
+      submitPostDialog("publish-push");
+    });
+    el.btnPostDraft.addEventListener("click", function () {
+      submitPostDialog("draft");
     });
     el.btnEditorSavePush.addEventListener("click", runEditorSavePush);
     el.btnPostClose.addEventListener("click", function () {
@@ -4106,6 +4182,7 @@
     el.postError = $("post-error");
     el.btnPostSubmit = $("btn-post-submit");
     el.btnPostPush = $("btn-post-push");
+    el.btnPostDraft = $("btn-post-draft");
     el.btnEditorSavePush = $("btn-editor-save-push");
 
     editor = window.htmleditEditor.create({

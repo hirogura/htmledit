@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -890,6 +891,145 @@ class ApiTestCase(unittest.TestCase):
         snippet = self.snippet_html(index, "20261023-100004")
         self.assertIn("続きを読む", snippet)
 
+        self.request("DELETE", f"/api/sites/{site_id}", {})
+
+
+    def test_draft_flow(self):
+        """下書き (draft/) → 「保存・Push」で public へ移動・公開するフロー."""
+        from datetime import datetime
+        from urllib.parse import quote
+
+        status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
+        site_id = payload["site"]["id"]
+        repo = Path(CONFIG.data_dir) / "repos" / site_id
+
+        index_html = (
+            "<!doctype html>\n<html lang=\"ja\">\n<head><meta charset=\"utf-8\" />\n"
+            "<title>テストサイト</title></head>\n<body>\n"
+            "<main class=\"container\"><article class=\"posts\"></article></main>\n</body>\n</html>\n"
+        )
+        status, payload = self.request(
+            "PUT", f"/api/sites/{site_id}/file", {"path": "public/index.html", "content": index_html}
+        )
+        self.assertEqual(status, 200, payload)
+
+        # 下書きは公開時の日付ではなく「作成した時点」の日付フォルダに作る
+        draft_stamp = datetime.now()
+        draft_id = draft_stamp.strftime("%Y%m%d-%H%M%S")
+        draft_path = (
+            f"draft/posts/{draft_id[:4]}/{draft_id[4:6]}/{draft_id[6:8]}/{draft_id}.html"
+        )
+
+        # 添付画像は draft/images/YYYY/MM/DD/ に保存され、下書きページからの相対パスが返る
+        png = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+            b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
+            b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        status, up = self.request_upload(
+            f"/api/sites/{site_id}/assets/upload"
+            f"?name=shot.png&page={quote(draft_path)}&prefix={quote('draft/images')}",
+            png,
+            "image/png",
+        )
+        self.assertEqual(status, 200, up)
+        self.assertTrue(up["path"].startswith("draft/images/"), up)
+        reference = up["reference"]
+        self.assertTrue((repo / "draft" / "images").exists())
+
+        status, payload = self.request(
+            "POST",
+            f"/api/sites/{site_id}/drafts",
+            {
+                "id": draft_id,
+                "title": "下書き記事",
+                "bodyHtml": f"<p>下書きの本文です。</p>\n<img src=\"{reference}\" alt=\"\">\n",
+                "tags": "メモ",
+            },
+        )
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["post"], draft_path)
+
+        draft_page = repo / draft_path
+        self.assertTrue(draft_page.is_file())
+        draft_html = draft_page.read_text("utf-8")
+        # 下書きページは draft/posts/YYYY/MM/DD/ に作られ、data-post-id は下書き作成時刻
+        self.assertIn(f'data-post-id="{draft_id}"', draft_html)
+        self.assertIn("下書き記事", draft_html)
+        # 画像は draft/images 以下を参照する
+        self.assertIn(reference, draft_html)
+
+        # 下書きは一覧ページに反映されない
+        index = (repo / "public/index.html").read_text("utf-8")
+        self.assertNotIn("data-post-id", index)
+
+        # 下書きをそのまま「保存」しても draft 以下に保存され、日付・ファイル名は変わらない
+        edited = draft_html.replace("下書きの本文です。", "下書きを編集しました。")
+        status, payload = self.request(
+            "PUT", f"/api/sites/{site_id}/file", {"path": draft_path, "content": edited}
+        )
+        self.assertEqual(status, 200, payload)
+        self.assertNotIn("sync", payload)
+        self.assertEqual((repo / draft_path).read_text("utf-8"), edited)
+
+        # 「保存・Push」相当: 下書きを public へ移動して公開する
+        # (公開後の ID が下書き作成 ID と同一秒にならないよう少し待つ)
+        import time
+
+        time.sleep(1.1)
+        status, pub = self.request("POST", f"/api/sites/{site_id}/drafts/publish", {"path": draft_path})
+        self.assertEqual(status, 200, pub)
+        self.assertTrue(pub["ok"], pub)
+        self.assertFalse(draft_page.exists())
+        # 下書きの空ディレクトリは掃除される
+        drafts_posts = repo / "draft" / "posts"
+        if drafts_posts.exists():
+            self.assertFalse(any(p.is_file() for p in drafts_posts.rglob("*")))
+
+        # 公開後のファイル名は保存 (push) 時点の ID
+        new_id = pub["post"].split("/")[-1][: -len(".html")]
+        self.assertTrue(new_id.startswith(pub["post"].split("/")[2]), pub["post"])
+        pub_page = (repo / pub["post"]).read_text("utf-8")
+        # data-post-id と本文内の日付は保存時点に差し替わる
+        self.assertIn(f'data-post-id="{new_id}"', pub_page)
+        self.assertNotIn(f'data-post-id="{draft_id}"', pub_page)
+        weekdays = "月火水木金土日"
+        stamp_time = datetime.strptime(new_id, "%Y%m%d-%H%M%S")
+        self.assertIn(
+            f"{stamp_time.year}年{stamp_time.month}月{stamp_time.day}日（" + weekdays[stamp_time.weekday()] + "）",
+            pub_page,
+        )
+        # 編集内容が引き継がれる
+        self.assertIn("下書きを編集しました。", pub_page)
+        # draft 画像は public/images 以下へ移動し、個別ページからの相対パスに書き換わる
+        image_src = None
+        for candidate in re.finditer(r'src="([^"]*)"', pub_page):
+            value = candidate.group(1)
+            if "images/" in value or value.startswith("draft/"):
+                image_src = value
+        self.assertTrue(image_src, pub_page)
+        resolved = os.path.normpath(os.path.join(str((repo / pub["post"]).parent), image_src))
+        self.assertTrue(os.path.isfile(resolved), image_src)
+        self.assertTrue(resolved.startswith(str(repo / "public" / "images")), image_src)
+        self.assertFalse((repo / "draft" / "images").exists())
+
+        # 一覧ページに公開した記事が載る
+        index = (repo / "public/index.html").read_text("utf-8")
+        self.assertIn(f'data-post-id="{new_id}"', index)
+        self.assertIn(f'<a href="posts/{new_id[:4]}/{new_id[4:6]}/{new_id[6:8]}/{new_id}.html"', index)
+        self.assertIn("下書き記事", index)
+
+        self.request("DELETE", f"/api/sites/{site_id}", {})
+
+    def test_draft_publish_rejects_non_draft(self):
+        """draft/ 以外のパスでは下書きの公開が拒否される."""
+        status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
+        site_id = payload["site"]["id"]
+        status, error = self.request(
+            "POST", f"/api/sites/{site_id}/drafts/publish", {"path": "public/index.html"}
+        )
+        self.assertEqual(status, 400, error)
+        self.assertIn("draft/", error["error"])
         self.request("DELETE", f"/api/sites/{site_id}", {})
 
 

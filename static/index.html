@@ -13,7 +13,7 @@
       <div class="brand">
         <span class="brand-mark">&lt;/&gt;</span>
         <span class="brand-name">htmledit</span>
-        <span class="brand-version" id="app-version" title="バージョン">v.3.7.5</span>
+        <span class="brand-version" id="app-version" title="バージョン">v.3.8.0</span>
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
@@ -65,7 +65,7 @@
           <button type="button" class="btn btn-ghost btn-sm" id="btn-post-close" title="閉じる">×</button>
         </div>
         <form id="post-form" class="post-scroll">
-          <p class="field-hint">public/index.html の &lt;article class="posts"&gt; の直下 (無ければ &lt;section class="hero"&gt; の直後) に挿入します。</p>
+          <p class="field-hint">public/index.html の &lt;article class="posts"&gt; の直下 (無ければ &lt;section class="hero"&gt; の直後) に挿入します。<br />「下書き」ボタンでは draft/ 以下に非公開で保存し、あとで WYSIWYG で編集して「保存・Push」で公開できます。</p>
           <label class="field">
             <span class="field-label">タイトル</span>
             <input class="input" type="text" id="post-title" required />
@@ -92,7 +92,8 @@
           </label>
           <p class="dialog-error" id="post-error" hidden></p>
           <div class="btn-row">
-            <button type="button" class="btn btn-primary" id="btn-post-submit">投稿</button>
+            <button type="button" class="btn" id="btn-post-draft" title="public に公開せず、draft/ 以下に下書きとして保存する">下書き</button>
+        <button type="button" class="btn btn-primary" id="btn-post-submit">投稿</button>
             <button
               type="button"
               class="btn btn-primary"
