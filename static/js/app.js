@@ -231,21 +231,30 @@
       item.className = "site-item" + (site.id === state.siteId ? " is-active" : "");
 
       var name;
-      if (site.site_url) {
-        /* サイトURL が登録されていれば表示名を別タブで開くリンクにする */
-        name = document.createElement("a");
-        name.className = "site-item-name site-item-link";
-        name.href = site.site_url;
-        name.target = "_blank";
-        name.rel = "noopener noreferrer";
-        name.title = site.site_url + " を別タブで開く";
-      } else {
-        name = document.createElement("span");
-        name.className = "site-item-name";
-        name.title = site.url;
-      }
+      name = document.createElement("span");
+      name.className = "site-item-name";
+      name.title = "クリックでこのサイトに切り替え (" + site.url + ")";
       name.textContent = site.name;
       item.appendChild(name);
+
+      if (site.site_url) {
+        /* サイトURL が登録されていれば「PAT」バッジの左に Web アイコンを置き、押すと別タブで開く */
+        var open = document.createElement("button");
+        open.type = "button";
+        open.className = "site-item-open";
+        open.title = site.site_url + " を別タブで開く";
+        open.innerHTML =
+          '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">' +
+          '<circle cx="8" cy="8" r="6.4" stroke="currentColor" stroke-width="1.3" fill="none"/>' +
+          '<ellipse cx="8" cy="8" rx="2.9" ry="6.4" stroke="currentColor" stroke-width="1.1" fill="none"/>' +
+          '<path d="M1.6 8h12.8" stroke="currentColor" stroke-width="1.1" fill="none"/>' +
+          "</svg>";
+        open.addEventListener("click", function (event) {
+          event.stopPropagation();
+          window.open(site.site_url, "_blank", "noopener,noreferrer");
+        });
+        item.appendChild(open);
+      }
 
       if (site.hasToken) {
         var badge = document.createElement("span");
