@@ -589,7 +589,7 @@ def _post_page_relpath(post_id: str) -> str:
 # --------------------------------------------------------------------------
 
 def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: bool, with_divider: bool, link: str, thumb_src: str = "", tags: str = "") -> str:
-    chunks, _ = _snippet_parts(body_html)
+    chunks, truncated = _snippet_parts(body_html)
     # タイトルは青字・下線にしない (シンプルに本文色で)
     lines = []
     if thumb_src:
@@ -603,11 +603,13 @@ def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: boo
             rendered.append('<pre class="site-code-block">' + html.escape("\n".join(chunk_lines)) + "</pre>")
         else:
             rendered.append("<p>" + "<br />\n  ".join(html.escape(line) for line in chunk_lines) + "</p>")
-    # 一覧ページは記事の抜粋なので、本文が短くても個別ページへの導線を必ず出す
-    if rendered and rendered[-1].startswith("<p>"):
-        rendered[-1] = rendered[-1].replace("</p>", read_more_label + "</p>")
-    else:
-        rendered.append(f"<p>{read_more_link}</p>")
+    # 画像が 2 点以上ある記事は、本文が短くても一覧で省略されている可能性があるため
+    # 必ず個別ページへの導線を出す (_snippet_parts が truncated を立てる)。
+    if truncated:
+        if rendered and rendered[-1].startswith("<p>"):
+            rendered[-1] = rendered[-1].replace("</p>", read_more_label + "</p>")
+        else:
+            rendered.append(f"<p>{read_more_link}</p>")
     lines.extend(rendered)
     if with_timestamp:
         stamp = _stamp_text(post_id, tags)
@@ -815,8 +817,24 @@ def _collect_posts(root: Path, index_html: str) -> list[dict]:
             close = re.compile(r"</article\s*>", re.I).search(page, match.end())
             if not close:
                 continue
+            # 本文中に同じ投稿 ID の <article> が紛れ込んだページでは、最初の
+            # </article> で打ち切らず、同じ ID が続く範囲を本文として扱う。
+            inner_end = close.start()
+            position = close.end()
+            while True:
+                next_match = _MANAGED_OPEN_RE.search(page, position)
+                if not next_match:
+                    break
+                next_id = _MANAGED_ID_RE.search(next_match.group(1))
+                if not next_id or next_id.group(1) != post_id:
+                    break
+                next_close = re.compile(r"</article\s*>", re.I).search(page, next_match.end())
+                if not next_close:
+                    break
+                inner_end = next_close.start()
+                position = next_close.end()
             timestamp, divider = _parse_flags(match.group(1))
-            title, body_html = _article_source(page[match.end() : close.start()])
+            title, body_html = _article_source(page[match.end() : inner_end])
             posts[post_id] = {
                 "id": post_id,
                 "title": title,

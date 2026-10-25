@@ -121,6 +121,11 @@ class ApiTestCase(unittest.TestCase):
         except urllib.error.HTTPError as exc:
             return exc.code, exc.read().decode("utf-8", "replace"), exc.headers.get("Content-Type", "")
 
+    def snippet_html(self, index, post_id):
+        start = index.index(f'data-post-id="{post_id}"')
+        end = index.index("</article>", start)
+        return index[start:end]
+
     def test_version(self):
         from htmledit import __version__
 
@@ -823,10 +828,67 @@ class ApiTestCase(unittest.TestCase):
         self.assertIn('id="site-code-copy-script"', index)
         # 一覧のスニペットではコードブロックをテキスト行として表示する (デザイン上の都合)
         self.assertIn("print(&quot;hello&quot;)", index)
-        snippet_html = index[index.index("20261023-000022") : index.index("20261023-000022") + 800]
+        snippet_html = self.snippet_html(index, "20261023-000022")
         self.assertNotIn("<pre", snippet_html)
-        # 本文が短い記事でも一覧には「続きを読む」を表示する
-        self.assertIn("続きを読む", snippet_html)
+        # 画像なしで本文がすべて収まっている記事には「続きを読む」を付けない
+        self.assertNotIn("続きを読む", snippet_html)
+
+        self.request("DELETE", f"/api/sites/{site_id}", {})
+
+    def test_snippet_read_more_rules(self):
+        status, payload = self.request("POST", "/api/sites", {"url": str(self.remote)})
+        site_id = payload["site"]["id"]
+        repo = Path(CONFIG.data_dir) / "repos" / site_id
+        index_html = (
+            '<!doctype html>\n<html lang="ja">\n<head><meta charset="utf-8" />\n'
+            "<title>テストサイト</title></head>\n<body>\n"
+            '<main class="container">\n<article class="posts"></article>\n</main>\n</body>\n</html>\n'
+        )
+        status, payload = self.request(
+            "PUT", f"/api/sites/{site_id}/file", {"path": "public/index.html", "content": index_html}
+        )
+        self.assertEqual(status, 200, payload)
+
+        cases = [
+            # (ID, 本文, 続きを読むの有無)
+            ("20261023-100001", "<p>短い本文です</p>", False),
+            ("20261023-100002", '<p>短い本文</p><img src="../images/a.png"><img src="../images/b.png">', True),
+            ("20261023-100003", "<p>1行目<br>2行目<br>3行目<br>4行目</p>", True),
+            ("20261023-100004", '<p>短い本文</p><img src="../images/a.png">', False),
+        ]
+        for post_id, body_html, _ in cases:
+            status, payload = self.request(
+                "POST",
+                f"/api/sites/{site_id}/posts",
+                {"id": post_id, "title": post_id, "bodyHtml": body_html},
+            )
+            self.assertEqual(status, 200, payload)
+
+        index = (repo / "public/index.html").read_text("utf-8")
+        for post_id, _, expected in cases:
+            snippet = self.snippet_html(index, post_id)
+            self.assertEqual("続きを読む" in snippet, expected, f"{post_id}: {snippet}")
+
+        # 個別ページ内に同じ投稿 ID の <article> が複数ある場合は本文を結合し、
+        # 最初の </article> より後ろの続きも省略判定に含める
+        post_path = repo / "public/posts/2026/10/23/20261023-100004.html"
+        page = post_path.read_text("utf-8")
+        extra = (
+            '<article class="post-page" data-post-id="20261023-100004">この次は</article>'
+            "<h3>見出し３</h3>"
+            '<article class="post-page" data-post-id="20261023-100004">Enterで追加</article>'
+        )
+        page = page.replace("</article>", "</article>" + extra, 1)
+        status, payload = self.request(
+            "PUT",
+            f"/api/sites/{site_id}/file",
+            {"path": "public/posts/2026/10/23/20261023-100004.html", "content": page},
+        )
+        self.assertEqual(status, 200, payload)
+        self.assertTrue(payload.get("sync", {}).get("ok"))
+        index = (repo / "public/index.html").read_text("utf-8")
+        snippet = self.snippet_html(index, "20261023-100004")
+        self.assertIn("続きを読む", snippet)
 
         self.request("DELETE", f"/api/sites/{site_id}", {})
 
