@@ -144,7 +144,7 @@ QUOTE_STYLE_MARKUP = (
     "    </style>"
 )
 
-# 見出し (h1〜h3) の装飾スタイル。
+# 見出し (h1〜h4) の装飾スタイル。
 # 公開ページ用 (htmledit 本体の UI やエディターに波及しないよう .container / article 配下に限定)。
 HEADINGS_STYLE_MARKUP = (
     '<style id="site-headings-style">\n'
@@ -213,6 +213,30 @@ HEADINGS_STYLE_MARKUP = (
     "      background-position: center;\n"
     "      background-size: 20px 20px;\n"
     "    }\n"
+    "    .container h4,\n"
+    "    article h4 {\n"
+    "      display: flow-root;\n"
+    "      position: relative;\n"
+    "      isolation: isolate;\n"
+    "      margin: 1.4em 0 0.6em 20px;\n"
+    "      font-size: 20px;\n"
+    "      line-height: 1.4;\n"
+    "      color: #333;\n"
+    "      text-shadow: 0 0 2px white;\n"
+    "    }\n"
+    "    .container h4::before,\n"
+    "    article h4::before {\n"
+    '      content: "";\n'
+    "      position: absolute;\n"
+    "      background: #9de5ff;\n"
+    "      width: 50px;\n"
+    "      height: 50px;\n"
+    "      border-radius: 50%;\n"
+    "      top: 50%;\n"
+    "      left: -15px;\n"
+    "      transform: translateY(-50%);\n"
+    "      z-index: -1;\n"
+    "    }\n"
     "    </style>"
 )
 
@@ -248,14 +272,14 @@ def _ensure_quote_style(html_text: str) -> str:
 
 
 def _ensure_headings_style(html_text: str) -> str:
-    """公開ページに見出しのスタイルが無ければ </head> 直前に注入する."""
-    # body 内に旧スタイルがあれば一旦除去して head 側に注入し直す
-    if 'id="site-headings-style"' in html_text:
-        body_match = re.search(r"<body\b[\s\S]*?(<style\b[^>]*\bid=[\"']site-headings-style[\"'][^>]*>[\s\S]*?</style\s*>)", html_text, re.I)
-        if body_match:
-            html_text = html_text[: body_match.start(1)] + html_text[body_match.end(1) :]
-            return _ensure_in_head(html_text, 'id="site-headings-style"', HEADINGS_STYLE_MARKUP)
+    """公開ページの見出しスタイルを最新の内容に揃える (head 直前に注入する)."""
+    if not html_text:
         return html_text
+    # 旧バージョンのスタイル (body 内 / head 内) を除去して最新版を注入し直す
+    pattern = re.compile(
+        r'<style\b[^>]*\bid=["\']site-headings-style["\'][^>]*>[\s\S]*?</style\s*>\n?', re.I
+    )
+    html_text = pattern.sub("", html_text)
     return _ensure_in_head(html_text, 'id="site-headings-style"', HEADINGS_STYLE_MARKUP)
 
 
@@ -570,7 +594,7 @@ def _snippet_inner(post_id: str, title: str, body_html: str, with_timestamp: boo
     lines = []
     if thumb_src:
         lines.append(f'<p style="text-align: right; margin: 0 0 8px;"><img src="{thumb_src}" alt="" style="{_THUMB_STYLE}" /></p>')
-    lines.append(f'<h1><a href="{link}" style="{_TITLE_LINK_STYLE}">{html.escape(title or "無題")}</a></h1>')
+    lines.append(f'<h4><a href="{link}" style="{_TITLE_LINK_STYLE}">{html.escape(title or "無題")}</a></h4>')
     read_more_link = f'<a href="{link}" style="{_READ_MORE_STYLE}">続きを読む</a>'
     read_more_label = "&nbsp;" + read_more_link  # 本文末尾とくっつかないよう一行空ける
     rendered = []
