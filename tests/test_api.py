@@ -816,6 +816,9 @@ class ApiTestCase(unittest.TestCase):
         # 引用ブロックのスタイルも全ページに注入される
         self.assertIn('id="site-quote-style"', post22)
         self.assertIn("border-left: 4px solid", post22)
+        # 見出し (h1〜h3) のスタイルも全ページに注入される
+        self.assertIn('id="site-headings-style"', post22)
+        self.assertIn("border: dashed 2px white", post22)
         index = (repo / "public/index.html").read_text("utf-8")
         self.assertIn('id="site-code-copy-script"', index)
         # 一覧のスニペットではコードブロックをテキスト行として表示する (デザイン上の都合)

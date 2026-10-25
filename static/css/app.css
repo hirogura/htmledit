@@ -1257,6 +1257,68 @@ button.htmledit-post-edit:hover {
   border-radius: 0 8px 8px 0;
 }
 
+.wysiwyg-host h1 {
+  background: #dfefff;
+  box-shadow: 0 0 0 5px #dfefff;
+  border: dashed 2px white;
+  padding: 0.2em 0.5em;
+  margin: 1.2em 5px 0.6em;
+  font-size: 1.5em;
+  line-height: 1.4;
+  color: #2b3138;
+}
+
+.wysiwyg-host h2 {
+  position: relative;
+  background: #f1f8ff;
+  padding: 0.35em 0.5em;
+  border-left: solid 2em #5c9ee7;
+  margin: 1.4em 0 0.6em;
+  font-size: 1.3em;
+  line-height: 1.4;
+  color: #2b3138;
+}
+
+.wysiwyg-host h2::before {
+  content: "";
+  position: absolute;
+  left: -1.5em;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1em;
+  height: 1em;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' fill='white'%3E%3Cpath d='M410.3 231l11.3-11.3-33.9-33.9-62.1-62.1L291.7 89.8l-11.3 11.3-22.6 22.6L58.6 322.9c-10.4 10.4-18 23.3-22.2 37.4L1 480.7c-2.5 8.4-.2 17.5 6.1 23.7s15.3 8.5 23.7 6.1l120.3-35.4c14.1-4.2 27-11.8 37.4-22.2L387.7 253.7 410.3 231zM160 399.4l-9.1 22.7c-4 3.1-8.5 5.4-13.3 6.9L59.4 452l23-78.2c1.5-4.8 3.8-9.3 6.9-13.3l22.7-9.1 32 32zM362.7 18.7L341.3 40.1l33.9 33.9 21.4-21.4c6.2-6.2 6.2-16.4 0-22.6l-11.3-11.3c-6.2-6.2-16.4-6.2-22.6 0z'/%3E%3C/svg%3E") no-repeat center / contain;
+}
+
+.wysiwyg-host h3 {
+  position: relative;
+  background: #ffd98a;
+  padding: 4px 10px 4px 28px;
+  font-size: 20px;
+  line-height: 1.4;
+  color: #474747;
+  border-radius: 0 10px 10px 0;
+  margin: 1.4em 0 0.6em 20px;
+}
+
+.wysiwyg-host h3::before {
+  content: "";
+  box-sizing: border-box;
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  left: -20px;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: #ffa337;
+  border: solid 3px white;
+  border-radius: 50%;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' fill='white'%3E%3Cpath d='M505.1 19.1c-1.2-5.5-6.7-11-12.2-12.2C460.7 0 435.5 0 410.4 0 307.2 0 245.3 55.2 199.1 128H94.8c-16.3 0-35.6 11.9-42.9 26.5L2.5 253.3A28.4 28.4 0 0 0 0 264a24 24 0 0 0 24 24h103.8l-22.5 22.5c-11.4 11.4-13 32.3 0 45.3l50.9 50.9c11.2 11.2 32.2 13.2 45.3 0l22.5-22.5V488a24 24 0 0 0 24 24 28.6 28.6 0 0 0 10.7-2.5l98.7-49.4c14.6-7.3 26.5-26.5 26.5-42.9V312.8c72.6-46.3 128-108.4 128-211.1 0-25.2 0-50.4-7-82.6zM384 168a40 40 0 1 1 40-40 40 40 0 0 1-40 40z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 20px 20px;
+}
+
 .wysiwyg-host.is-link-selected a.is-selected,
 .wysiwyg-host.is-image-selected img.is-selected {
   outline: 2px solid var(--accent);
